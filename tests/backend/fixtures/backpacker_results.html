@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>BackpackerBoard NZ — Test Fixture</title></head>
+<body>
+<table width="100%" cellspacing="0" cellpadding="2">
+
+  <!-- Featured row (rowgrey) -->
+  <tr class="rowgrey">
+    <td width="12%"><div class="featuredbox">Featured</div></td>
+    <td class="jobtabletitle">
+      <a href="new-zealand-jobs118080.html">Packhouse Workers Wanted — Hawke's Bay</a>
+    </td>
+    <td width="25%">Hawke&apos;s Bay</td>
+    <td width="12%">Seasonal</td>
+  </tr>
+
+  <!-- Regular rows (rowlightgrey) -->
+  <tr class="rowlightgrey">
+    <td width="12%">10 Jun 2026</td>
+    <td class="jobtabletitle">
+      <a href="new-zealand-jobs119451.html">Farm Labourer — Bay of Plenty</a>
+    </td>
+    <td width="25%">Bay of Plenty</td>
+    <td width="12%">Full Time</td>
+  </tr>
+
+  <tr class="rowlightgrey">
+    <td width="12%">8 Jun 2026</td>
+    <td class="jobtabletitle">
+      <a href="new-zealand-jobs117332.html">Orchard Worker — Nelson</a>
+    </td>
+    <td width="25%">Nelson</td>
+    <td width="12%">Casual</td>
+  </tr>
+
+  <!-- Malformed: no new-zealand-jobs link — must be skipped -->
+  <tr class="rowlightgrey">
+    <td width="12%">1 Jun 2026</td>
+    <td class="jobtabletitle">
+      <a href="australia-jobs99999.html">Random Aus Job</a>
+    </td>
+    <td width="25%">Auckland</td>
+    <td width="12%">Full Time</td>
+  </tr>
+
+  <!-- Malformed: no link at all — must be skipped -->
+  <tr class="rowlightgrey">
+    <td width="12%">2 Jun 2026</td>
+    <td class="jobtabletitle">Missing Link Job</td>
+    <td width="25%">Wellington</td>
+    <td width="12%">Casual</td>
+  </tr>
+
+  <!-- Header row (no class) — must be ignored by selector -->
+  <tr>
+    <th>Date</th>
+    <th>Title</th>
+    <th>Location</th>
+    <th>Type</th>
+  </tr>
+
+</table>
+</body>
+</html>

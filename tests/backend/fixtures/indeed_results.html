@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Indeed NZ — Test Fixture</title></head>
+<body>
+<div id="mosaic-jobResults">
+  <ul>
+
+    <!-- Card 1: farm worker — P1 role, full fields -->
+    <li class="css-5lfssm eu4oa1w0">
+      <div class="job_seen_beacon">
+        <div class="cardOutline">
+          <a class="jcs-JobTitle css-jspxzf eu4oa1w0" data-jk="c6f05a3eaf67c494" href="/rc/clk?jk=c6f05a3eaf67c494&amp;fccid=abc">
+            <span id="jobTitle-c6f05a3eaf67c494" class="jobTitle">
+              Farm Worker — Waikato Region
+            </span>
+          </a>
+          <div class="company_location">
+            <span data-testid="company-name">Green Valley Farms Ltd</span>
+            <div class="companyLocation">
+              <span data-testid="text-location">Hamilton, Waikato</span>
+            </div>
+          </div>
+          <div class="metadata">
+            <div data-testid="attribute_snippet_testid">$24 - $26 an hour</div>
+          </div>
+        </div>
+      </div>
+    </li>
+
+    <!-- Card 2: labourer — P3 role, employer and location present -->
+    <li class="css-5lfssm eu4oa1w0">
+      <div class="job_seen_beacon">
+        <div class="cardOutline">
+          <a class="jcs-JobTitle css-jspxzf eu4oa1w0" data-jk="a1b2c3d4e5f60001" href="/rc/clk?jk=a1b2c3d4e5f60001">
+            <span id="jobTitle-a1b2c3d4e5f60001" class="jobTitle">
+              General Labourer
+            </span>
+          </a>
+          <div class="company_location">
+            <span data-testid="company-name">BuildRight NZ</span>
+            <div class="companyLocation">
+              <span data-testid="text-location">Auckland, Auckland</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </li>
+
+    <!-- Card 3: packhouse — P1 role, no company name -->
+    <li class="css-5lfssm eu4oa1w0">
+      <div class="job_seen_beacon">
+        <div class="cardOutline">
+          <a class="jcs-JobTitle css-jspxzf eu4oa1w0" data-jk="f0e9d8c7b6a50002" href="/rc/clk?jk=f0e9d8c7b6a50002">
+            <span id="jobTitle-f0e9d8c7b6a50002" class="jobTitle">
+              Packhouse Operator
+            </span>
+          </a>
+          <div class="company_location">
+            <div class="companyLocation">
+              <span data-testid="text-location">Te Puke, Bay of Plenty</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </li>
+
+    <!-- Card 4: malformed — no jcs-JobTitle link — must be skipped -->
+    <li class="css-5lfssm eu4oa1w0">
+      <div class="job_seen_beacon">
+        <div class="cardOutline">
+          <h2 class="jobTitle">Broken Job No Link</h2>
+          <span data-testid="company-name">Broken Co</span>
+          <span data-testid="text-location">Wellington</span>
+        </div>
+      </div>
+    </li>
+
+    <!-- Card 5: jcs-JobTitle present but no data-jk attribute — must be skipped -->
+    <li class="css-5lfssm eu4oa1w0">
+      <div class="job_seen_beacon">
+        <div class="cardOutline">
+          <a class="jcs-JobTitle css-jspxzf eu4oa1w0" href="/rc/clk?jk=">
+            <span class="jobTitle">No JK Job</span>
+          </a>
+          <span data-testid="company-name">No Key Co</span>
+          <span data-testid="text-location">Christchurch</span>
+        </div>
+      </div>
+    </li>
+
+  </ul>
+</div>
+</body>
+</html>

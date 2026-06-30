@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Trade Me Jobs — Test Fixture</title></head>
+<body>
+  <div class="tm-search-results">
+
+    <!-- Card 1: P1 role, has salary, has description, uses primary selectors -->
+    <tm-jobs-search-card class="tm-jobs-search-card--list-view">
+      <div class="tm-jobs-search-card__wrapper o-card" tgcard="">
+        <a class="tm-jobs-search-card__link"
+           href="/a/jobs/agriculture-fishing-forestry/horticulture/bay-of-plenty/te-puke/full-time/listing/5981029311?rsqid=abc123">
+          <div class="tm-jobs-search-card__body">
+            <div class="tm-jobs-search-card__title tm-jobs-search-card__title--full-width" id="card1-title">
+              Packhouse Worker
+            </div>
+            <div class="tm-jobs-search-card__meta-information">
+              <tm-jobs-search-card-metadata>
+                <div class="jobs-search-card-metadata">
+                  <div class="jobs-search-card-metadata__row">
+                    <div class="jobs-search-card-metadata__time">3 days ago</div>
+                    <div class="jobs-search-card-metadata__company" aria-label="at Zespri International">
+                      Zespri International
+                    </div>
+                  </div>
+                  <div class="jobs-search-card-metadata__location" aria-label="in Bay Of Plenty.">
+                    Te Puke, Bay Of Plenty
+                  </div>
+                </div>
+              </tm-jobs-search-card-metadata>
+            </div>
+            <div class="tm-jobs-search-card__short-description" id="card1-subtitle">
+              Packhouse work during the kiwifruit season. Overseas applicants welcome.
+            </div>
+            <div class="tm-jobs-search-card__approximate-pay-range" id="card1-pay">
+              $22 - $25 per hour
+            </div>
+          </div>
+        </a>
+      </div>
+    </tm-jobs-search-card>
+
+    <!-- Card 2: P2 role, no salary, no description -->
+    <tm-jobs-search-card class="tm-jobs-search-card--list-view">
+      <div class="tm-jobs-search-card__wrapper o-card" tgcard="">
+        <a class="tm-jobs-search-card__link"
+           href="/a/jobs/transport-logistics/warehouse-distribution/auckland/manukau-city/full-time/listing/6010827670?rsqid=abc123">
+          <div class="tm-jobs-search-card__body">
+            <div class="tm-jobs-search-card__title tm-jobs-search-card__title--full-width" id="card2-title">
+              Warehouse Operator
+            </div>
+            <div class="tm-jobs-search-card__meta-information">
+              <tm-jobs-search-card-metadata>
+                <div class="jobs-search-card-metadata">
+                  <div class="jobs-search-card-metadata__row">
+                    <div class="jobs-search-card-metadata__time">1 day ago</div>
+                    <div class="jobs-search-card-metadata__company" aria-label="at NZ Post">
+                      NZ Post
+                    </div>
+                  </div>
+                  <div class="jobs-search-card-metadata__location" aria-label="in Auckland.">
+                    Manukau City, Auckland
+                  </div>
+                </div>
+              </tm-jobs-search-card-metadata>
+            </div>
+          </div>
+        </a>
+      </div>
+    </tm-jobs-search-card>
+
+    <!-- Card 3: P3 role, has salary, no description -->
+    <tm-jobs-search-card class="tm-jobs-search-card--list-view">
+      <div class="tm-jobs-search-card__wrapper o-card" tgcard="">
+        <a class="tm-jobs-search-card__link"
+           href="/a/jobs/construction/general-labourers/wellington/wellington-city/full-time/listing/5994100539?rsqid=xyz789">
+          <div class="tm-jobs-search-card__body">
+            <div class="tm-jobs-search-card__title tm-jobs-search-card__title--full-width" id="card3-title">
+              General Labourer
+            </div>
+            <div class="tm-jobs-search-card__meta-information">
+              <tm-jobs-search-card-metadata>
+                <div class="jobs-search-card-metadata">
+                  <div class="jobs-search-card-metadata__row">
+                    <div class="jobs-search-card-metadata__time">2 days ago</div>
+                    <div class="jobs-search-card-metadata__company" aria-label="at Build Corp NZ">
+                      Build Corp NZ
+                    </div>
+                  </div>
+                  <div class="jobs-search-card-metadata__location" aria-label="in Wellington.">
+                    Wellington City, Wellington
+                  </div>
+                </div>
+              </tm-jobs-search-card-metadata>
+            </div>
+            <div class="tm-jobs-search-card__approximate-pay-range" id="card3-pay">
+              $24 per hour
+            </div>
+          </div>
+        </a>
+      </div>
+    </tm-jobs-search-card>
+
+    <!-- Card 4: malformed — missing title element — must be silently skipped -->
+    <tm-jobs-search-card class="tm-jobs-search-card--list-view">
+      <div class="tm-jobs-search-card__wrapper o-card" tgcard="">
+        <a class="tm-jobs-search-card__link"
+           href="/a/jobs/transport-logistics/warehouse-distribution/christchurch/listing/9999999">
+          <div class="tm-jobs-search-card__body">
+            <div class="tm-jobs-search-card__meta-information">
+              <tm-jobs-search-card-metadata>
+                <div class="jobs-search-card-metadata">
+                  <div class="jobs-search-card-metadata__company">Broken Listing Ltd</div>
+                  <div class="jobs-search-card-metadata__location">Christchurch, Canterbury</div>
+                </div>
+              </tm-jobs-search-card-metadata>
+            </div>
+          </div>
+        </a>
+      </div>
+    </tm-jobs-search-card>
+
+    <!-- Card 5: title present but href has no /listing/ID — must be skipped -->
+    <tm-jobs-search-card class="tm-jobs-search-card--list-view">
+      <div class="tm-jobs-search-card__wrapper o-card" tgcard="">
+        <a class="tm-jobs-search-card__link" href="/a/jobs/other/some-path">
+          <div class="tm-jobs-search-card__body">
+            <div class="tm-jobs-search-card__title" id="card5-title">
+              Mystery Role
+            </div>
+            <div class="tm-jobs-search-card__meta-information">
+              <tm-jobs-search-card-metadata>
+                <div class="jobs-search-card-metadata">
+                  <div class="jobs-search-card-metadata__company">Mystery Co</div>
+                  <div class="jobs-search-card-metadata__location">Auckland, Auckland</div>
+                </div>
+              </tm-jobs-search-card-metadata>
+            </div>
+          </div>
+        </a>
+      </div>
+    </tm-jobs-search-card>
+
+  </div>
+</body>
+</html>

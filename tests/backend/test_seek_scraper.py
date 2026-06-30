@@ -1,0 +1,242 @@
+"""
+Tests for the SEEK NZ scraper.
+
+All tests use local fixture HTML — no network requests are made.
+Playwright is not invoked; only _parse_page() and _parse_card() are tested directly.
+"""
+from pathlib import Path
+
+import pytest
+from sqlalchemy import create_engine as _sa_engine
+from sqlmodel import Session, SQLModel
+
+from backend.scrapers.seek import SeekScraper
+from backend.scrapers.base import ScrapedJob
+from backend.database.models import Job, RolePriority
+from backend.core.matcher import classify_role
+from backend.agents.scan_agent import ScanAgent
+
+
+# ── Fixtures ──────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def scraper() -> SeekScraper:
+    return SeekScraper()
+
+
+@pytest.fixture(scope="module")
+def fixture_html() -> str:
+    path = Path(__file__).parent / "fixtures" / "seek_results.html"
+    return path.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def parsed_jobs(scraper, fixture_html) -> list[ScrapedJob]:
+    return scraper._parse_page(fixture_html)
+
+
+@pytest.fixture
+def db_session():
+    """In-memory SQLite session for storage tests."""
+    engine = _sa_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+    SQLModel.metadata.drop_all(engine)
+
+
+# ── Parser: count and structure ───────────────────────────────────────────────
+
+
+def test_parse_returns_three_valid_jobs(parsed_jobs):
+    """Jobs 4 and 5 in the fixture are malformed and must be skipped."""
+    assert len(parsed_jobs) == 3
+
+
+def test_all_results_are_scraped_job_instances(parsed_jobs):
+    for job in parsed_jobs:
+        assert isinstance(job, ScrapedJob)
+
+
+def test_source_is_seek(parsed_jobs):
+    for job in parsed_jobs:
+        assert job.source == "seek"
+
+
+# ── Parser: field extraction ──────────────────────────────────────────────────
+
+
+def test_title_extraction(parsed_jobs):
+    titles = [j.title for j in parsed_jobs]
+    assert "Packhouse Worker" in titles
+    assert "Warehouse Operator" in titles
+    assert "General Labourer" in titles
+
+
+def test_employer_extraction(parsed_jobs):
+    employers = [j.employer for j in parsed_jobs]
+    assert "Zespri International" in employers
+    assert "NZ Post" in employers
+    assert "Build Corp NZ" in employers
+
+
+def test_location_via_jobcardlocation(parsed_jobs):
+    packhouse = next(j for j in parsed_jobs if j.title == "Packhouse Worker")
+    assert packhouse.location == "Te Puke, Bay of Plenty"
+
+
+def test_location_via_joblocation_fallback(parsed_jobs):
+    """Job 3 uses data-automation='jobLocation' instead of 'jobCardLocation'."""
+    labourer = next(j for j in parsed_jobs if j.title == "General Labourer")
+    assert labourer.location == "Wellington, Wellington"
+
+
+def test_salary_extracted_when_present(parsed_jobs):
+    packhouse = next(j for j in parsed_jobs if j.title == "Packhouse Worker")
+    assert packhouse.salary_text is not None
+    assert "$22" in packhouse.salary_text
+
+
+def test_salary_is_none_when_absent(parsed_jobs):
+    warehouse = next(j for j in parsed_jobs if j.title == "Warehouse Operator")
+    assert warehouse.salary_text is None
+
+
+def test_url_contains_seek_domain(parsed_jobs):
+    for job in parsed_jobs:
+        assert "seek.co.nz" in job.url
+
+
+def test_url_contains_job_id(parsed_jobs):
+    packhouse = next(j for j in parsed_jobs if j.title == "Packhouse Worker")
+    assert "79661001" in packhouse.url
+    assert packhouse.url == "https://www.seek.co.nz/job/79661001"
+
+
+# ── Job ID extraction ─────────────────────────────────────────────────────────
+
+
+def test_extract_id_from_clean_href(scraper):
+    assert scraper._extract_job_id("/job/12345678") == "12345678"
+
+
+def test_extract_id_strips_query_params(scraper):
+    assert scraper._extract_job_id("/job/79661001?type=standard&where=All") == "79661001"
+
+
+def test_extract_id_returns_none_for_non_job_path(scraper):
+    assert scraper._extract_job_id("/company/some-co") is None
+
+
+def test_extract_id_returns_none_for_empty_string(scraper):
+    assert scraper._extract_job_id("") is None
+
+
+def test_external_id_matches_extracted_job_id(parsed_jobs):
+    packhouse = next(j for j in parsed_jobs if j.title == "Packhouse Worker")
+    assert packhouse.external_id == "79661001"
+
+
+# ── Role classification ───────────────────────────────────────────────────────
+
+
+def test_classify_p1_packhouse():
+    assert classify_role("Packhouse Worker") == RolePriority.P1
+
+
+def test_classify_p1_picker():
+    assert classify_role("Fruit Picker") == RolePriority.P1
+
+
+def test_classify_p2_warehouse():
+    assert classify_role("Warehouse Operator") == RolePriority.P2
+
+
+def test_classify_p2_factory():
+    assert classify_role("Factory Worker") == RolePriority.P2
+
+
+def test_classify_p3_labourer():
+    assert classify_role("General Labourer") == RolePriority.P3
+
+
+def test_classify_returns_none_for_unknown():
+    assert classify_role("Chef de Partie") is None
+
+
+def test_classify_from_description_when_title_unclear():
+    assert classify_role("Seasonal Worker", "packhouse packing line work") == RolePriority.P1
+
+
+# ── DB storage and deduplication ─────────────────────────────────────────────
+
+
+def make_scraped(external_id="seek-test-001", title="Packhouse Worker") -> ScrapedJob:
+    return ScrapedJob(
+        external_id=external_id,
+        source="seek",
+        title=title,
+        employer="Test Employer",
+        location="Auckland",
+        url=f"https://www.seek.co.nz/job/{external_id}",
+        salary_text="$22/hr",
+        description="Entry-level packhouse work. Overseas applicants welcome.",
+    )
+
+
+def test_store_new_job_increments_new_count(db_session):
+    agent = ScanAgent()
+    new, changed, _ = agent._store_scraped_jobs(db_session, [make_scraped()])
+    assert new == 1
+    assert changed == 0
+
+
+def test_stored_job_has_correct_title(db_session):
+    agent = ScanAgent()
+    agent._store_scraped_jobs(db_session, [make_scraped(title="Fruit Picker")])
+    job = db_session.exec(__import__("sqlmodel").select(Job)).first()
+    assert job.title == "Fruit Picker"
+
+
+def test_stored_job_gets_role_priority(db_session):
+    agent = ScanAgent()
+    agent._store_scraped_jobs(db_session, [make_scraped(title="Packhouse Worker")])
+    job = db_session.exec(__import__("sqlmodel").select(Job)).first()
+    assert job.role_priority == RolePriority.P1
+
+
+def test_duplicate_is_not_stored_twice(db_session):
+    agent = ScanAgent()
+    scraped = make_scraped()
+    agent._store_scraped_jobs(db_session, [scraped])
+    new2, changed2, _ = agent._store_scraped_jobs(db_session, [scraped])
+    assert new2 == 0
+
+    count = db_session.exec(
+        __import__("sqlmodel").select(__import__("sqlmodel").func.count()).select_from(Job)
+    ).one()
+    assert count == 1
+
+
+def test_multiple_new_jobs_all_stored(db_session):
+    agent = ScanAgent()
+    jobs = [make_scraped(f"id-{i}") for i in range(5)]
+    new, _, __ = agent._store_scraped_jobs(db_session, jobs)
+    assert new == 5
+
+
+def test_different_source_not_deduplicated(db_session):
+    """Same external_id from a different source is treated as a new job."""
+    agent = ScanAgent()
+    seek_job = make_scraped("12345")
+    other_job = ScrapedJob(
+        external_id="12345",
+        source="trademe",  # different source
+        title="Packhouse Worker",
+        employer="Other Co",
+        location="Wellington",
+        url="https://trademe.co.nz/job/12345",
+    )
+    new, _, __ = agent._store_scraped_jobs(db_session, [seek_job, other_job])
+    assert new == 2

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>PickNZ Jobs — Test Fixture</title></head>
+<body>
+<table>
+  <tbody class="wpjb-job-list">
+
+    <!-- Row 1: P1 role, has employer, has location -->
+    <tr class="wpjb-job-row wpjb-odd">
+      <td class="wpjb-col wpjb-column-title">
+        <a href="https://jobs.picknz.co.nz/job/kiwifruit-winter-pruning-4/">Kiwifruit Winter Pruning</a>
+        <div class="wpjb-sub">Bay of Plenty Orchards Ltd</div>
+      </td>
+      <td class="wpjb-col wpjb-column-type">
+        <span>Seasonal</span>
+      </td>
+      <td class="wpjb-col wpjb-column-location">
+        <i class="wpjb-icon wpjb-icon-pin"></i>Te Puke, Bay of Plenty
+        <div class="wpjb-sub">Need Staff Now</div>
+      </td>
+      <td class="wpjb-col wpjb-column-apply">
+        <a href="https://jobs.picknz.co.nz/job/kiwifruit-winter-pruning-4/" class="wpjb-button">Apply</a>
+      </td>
+    </tr>
+
+    <!-- Row 2: P2 role, has employer, has location, no sub-text in location -->
+    <tr class="wpjb-job-row wpjb-even">
+      <td class="wpjb-col wpjb-column-title">
+        <a href="https://jobs.picknz.co.nz/job/packhouse-sorter-8/">Packhouse Sorter</a>
+        <div class="wpjb-sub">Zespri Pack Ltd</div>
+      </td>
+      <td class="wpjb-col wpjb-column-type">
+        <span>Full Time</span>
+      </td>
+      <td class="wpjb-col wpjb-column-location">
+        <i class="wpjb-icon wpjb-icon-pin"></i>Ōpōtiki, Bay of Plenty
+      </td>
+      <td class="wpjb-col wpjb-column-apply">
+        <a href="https://jobs.picknz.co.nz/job/packhouse-sorter-8/" class="wpjb-button">Apply</a>
+      </td>
+    </tr>
+
+    <!-- Row 3: P1 role, missing employer (no wpjb-sub) -->
+    <tr class="wpjb-job-row wpjb-odd">
+      <td class="wpjb-col wpjb-column-title">
+        <a href="https://jobs.picknz.co.nz/job/apple-picker-12/">Apple Picker</a>
+      </td>
+      <td class="wpjb-col wpjb-column-type">
+        <span>Casual</span>
+      </td>
+      <td class="wpjb-col wpjb-column-location">
+        <i class="wpjb-icon wpjb-icon-pin"></i>Hawke's Bay
+      </td>
+      <td class="wpjb-col wpjb-column-apply">
+        <a href="https://jobs.picknz.co.nz/job/apple-picker-12/" class="wpjb-button">Apply</a>
+      </td>
+    </tr>
+
+    <!-- Row 4: malformed — no title link — must be skipped -->
+    <tr class="wpjb-job-row wpjb-even">
+      <td class="wpjb-col wpjb-column-title">
+        <span>No link here</span>
+      </td>
+      <td class="wpjb-col wpjb-column-location">Auckland</td>
+    </tr>
+
+    <!-- Row 5: title link present but href is not absolute — must be skipped -->
+    <tr class="wpjb-job-row wpjb-odd">
+      <td class="wpjb-col wpjb-column-title">
+        <a href="/relative-only/">Broken Relative URL</a>
+        <div class="wpjb-sub">Broken Co</div>
+      </td>
+      <td class="wpjb-col wpjb-column-location">
+        <i class="wpjb-icon wpjb-icon-pin"></i>Wellington
+      </td>
+    </tr>
+
+  </tbody>
+</table>
+</body>
+</html>

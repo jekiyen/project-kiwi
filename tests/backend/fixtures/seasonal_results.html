@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Seasonal Jobs NZ — Test Fixture</title></head>
+<body>
+
+  <!-- Card 1: Kiwifruit picking — P1 role, has employer and location -->
+  <div class="d-flex previewBox border-topp py-3" id="46">
+    <div class="flex-shrink-1 ms-3">
+      <div class="job-result-img me-2"></div>
+    </div>
+    <div class="flex-grow-1 ms-1">
+      <div class="d-flex align-items-top">
+        <div class="d-grow-1">
+          <h6 class="m-0">
+            <a class="job_search_title" href="https://seasonaljobs.co.nz/46/Harvest-2026-packhouse-workers-needed" target="_blank">
+              Harvest 2026 packhouse workers needed
+            </a>
+          </h6>
+          <div class="cname">Zespri Bay of Plenty</div>
+          <div class="location">Te Puke, North Island New Zealand</div>
+          <div class="posted mt-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 2: Flower picking — P1 role -->
+  <div class="d-flex previewBox border-topp py-3" id="16">
+    <div class="flex-shrink-1 ms-3">
+      <div class="job-result-img me-2"></div>
+    </div>
+    <div class="flex-grow-1 ms-1">
+      <div class="d-flex align-items-top">
+        <div class="d-grow-1">
+          <h6 class="m-0">
+            <a class="job_search_title" href="https://seasonaljobs.co.nz/16/Kiwifruit-Flower-Picking-Great-" target="_blank">
+              Kiwifruit Flower Picking Great $$$$
+            </a>
+          </h6>
+          <div class="cname">Ecowolf</div>
+          <div class="location">Pukehina, North Island New Zealand</div>
+          <div class="posted mt-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 3: Labourer — P3 role, missing employer -->
+  <div class="d-flex previewBox border-topp py-3" id="51">
+    <div class="flex-shrink-1 ms-3">
+      <div class="job-result-img me-2"></div>
+    </div>
+    <div class="flex-grow-1 ms-1">
+      <div class="d-flex align-items-top">
+        <div class="d-grow-1">
+          <h6 class="m-0">
+            <a class="job_search_title" href="https://seasonaljobs.co.nz/51/Tray-Making" target="_blank">
+              Tray Making
+            </a>
+          </h6>
+          <div class="location">Hawke's Bay, North Island New Zealand</div>
+          <div class="posted mt-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 4: malformed — previewBox id is not numeric — must be skipped -->
+  <div class="d-flex previewBox border-topp py-3" id="featured-banner">
+    <div class="flex-grow-1 ms-1">
+      <h6 class="m-0">
+        <a class="job_search_title" href="https://seasonaljobs.co.nz/99/Not-A-Job" target="_blank">
+          Not A Real Job
+        </a>
+      </h6>
+      <div class="cname">Ad Co</div>
+      <div class="location">Auckland</div>
+    </div>
+  </div>
+
+  <!-- Card 5: malformed — no job_search_title link — must be skipped -->
+  <div class="d-flex previewBox border-topp py-3" id="99">
+    <div class="flex-grow-1 ms-1">
+      <h6 class="m-0"><span>Broken Card</span></h6>
+      <div class="cname">Broken Co</div>
+      <div class="location">Wellington</div>
+    </div>
+  </div>
+
+</body>
+</html>

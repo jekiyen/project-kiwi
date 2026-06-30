@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>SEEK Jobs — Test Fixture</title></head>
+<body>
+  <div data-automation="searchResults">
+
+    <!-- Job 1: P1 role, has salary, uses jobCardLocation -->
+    <article data-automation="normalJob" data-job-id="79661001">
+      <a data-automation="jobTitle" href="/job/79661001?type=standard&amp;where=All+New+Zealand">
+        Packhouse Worker
+      </a>
+      <a data-automation="jobCompany" href="/company/zespri">Zespri International</a>
+      <strong data-automation="jobCardLocation">Te Puke, Bay of Plenty</strong>
+      <span data-automation="jobSalary">$22 – $25 per hour</span>
+    </article>
+
+    <!-- Job 2: P2 role, no salary, uses jobCardLocation -->
+    <article data-automation="normalJob" data-job-id="79661002">
+      <a data-automation="jobTitle" href="/job/79661002?type=standard">
+        Warehouse Operator
+      </a>
+      <a data-automation="jobCompany" href="/company/nzpost">NZ Post</a>
+      <strong data-automation="jobCardLocation">Auckland CBD, Auckland</strong>
+    </article>
+
+    <!-- Job 3: P3 role, has salary, uses jobLocation (alternate selector) -->
+    <article data-automation="normalJob" data-job-id="79661003">
+      <a data-automation="jobTitle" href="/job/79661003">General Labourer</a>
+      <span data-automation="jobCompany">Build Corp NZ</span>
+      <span data-automation="jobLocation">Wellington, Wellington</span>
+      <span data-automation="jobSalary">$22/hr</span>
+    </article>
+
+    <!-- Job 4: malformed — no jobTitle element — must be silently skipped -->
+    <article data-automation="normalJob" data-job-id="79661004">
+      <a data-automation="jobCompany">Broken Listing Ltd</a>
+      <strong data-automation="jobCardLocation">Christchurch, Canterbury</strong>
+    </article>
+
+    <!-- Job 5: jobTitle present but no extractable job ID in href — must be skipped -->
+    <article data-automation="normalJob">
+      <a data-automation="jobTitle" href="/some-other-path">Mystery Role</a>
+      <a data-automation="jobCompany">Mystery Co</a>
+    </article>
+
+  </div>
+</body>
+</html>
