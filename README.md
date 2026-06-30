@@ -140,3 +140,4 @@ TELEGRAM_CHAT_ID=your_personal_chat_id
 ## License
 
 Private — personal use only.
+# project-kiwi
