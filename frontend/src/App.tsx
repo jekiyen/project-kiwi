@@ -21,6 +21,7 @@ import {
   sourceLabel,
 } from "./shared";
 import ApplicationsPage from "./pages/ApplicationsPage";
+import NotificationsPage from "./pages/NotificationsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -76,6 +77,38 @@ function OnlineBadge({ online }: { online: boolean }) {
       />
       {online ? "Online" : "Offline"}
     </span>
+  );
+}
+
+function NotificationHealthCard() {
+  const { data: config, isLoading, isError } = useQuery({
+    queryKey: ["notificationConfig"],
+    queryFn: api.notificationConfig,
+    staleTime: 60_000,
+  });
+
+  const configured = config?.telegram.configured ?? false;
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <p className="text-gray-400 text-xs uppercase tracking-wide">Notifications</p>
+      <div className="flex items-center gap-2 mt-1.5">
+        <span
+          className={`w-1.5 h-1.5 rounded-full ${
+            isLoading ? "bg-gray-600" : configured ? "bg-green-400" : "bg-gray-500"
+          }`}
+        />
+        <p className="text-sm text-gray-300">
+          {isLoading ? "Checking…" : isError ? "Unavailable" : "Telegram"}
+          {!isLoading && !isError && (
+            <span className={configured ? "text-green-400" : "text-gray-500"}>
+              {" "}
+              {configured ? "Healthy" : "Not Configured"}
+            </span>
+          )}
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -369,6 +402,15 @@ function Sidebar() {
           <span>📜</span>
           Scan History
         </NavLink>
+        <NavLink
+          to="/notifications"
+          className={({ isActive }) =>
+            `${navLink} ${isActive ? activeClass : inactiveClass}`
+          }
+        >
+          <span>🔔</span>
+          Notifications
+        </NavLink>
       </nav>
 
       <div className="p-4 border-t border-gray-800">
@@ -528,6 +570,7 @@ function Dashboard() {
               accent="text-green-400"
               loading={jobsFetching}
             />
+            <NotificationHealthCard />
           </>
         )}
       </div>
@@ -648,6 +691,7 @@ function AppShell() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/applications" element={<ApplicationsPage />} />
           <Route path="/scan-history" element={<ScanHistoryPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
         </Routes>
       </main>
     </div>

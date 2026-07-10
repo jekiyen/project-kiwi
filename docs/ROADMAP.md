@@ -111,12 +111,43 @@ Development follows a phase-by-phase approach: each phase must be stable before 
 **Priority:** High
 **Goal:** Stable, reliable V1 ready for daily use as the primary job search tool.
 
-**Deliverables:**
+### Phase 6.1 — Application Intelligence
+**Status:** Complete
+
+- Application tracker: Saved / Applied / Interview / Offer / Rejected (+ Visa / Archived)
+- Resume version and cover letter version tracked per application
+- Per-application timeline/history (created, status changes)
+- One-click Save / Apply from the Jobs page
+- `GET /applications/{id}/timeline` endpoint
+
+### Phase 6.2A — Telegram Notification Foundation
+**Status:** Complete
+
+- `NotificationService` + `NotificationProvider` abstraction (provider-agnostic; Email/Discord/Slack can be added without touching business logic)
+- `TelegramProvider` — silently skips and logs a warning when unconfigured, never throws, never crashes a scan
+- Event types: `HIGH_SCORE_JOB`, `SCAN_COMPLETED`, `SCAN_FAILED`, `APPLICATION_CREATED`, `APPLICATION_STATUS_CHANGED`
+- Event dispatch wired into the scan agent and application/job routes (business logic never calls a provider directly)
+- Production-ready message templates per event type
+- `GET /api/v1/notifications/config`, `POST /api/v1/notifications/test`
+- Notification Settings page + Dashboard health card (Telegram: Configured / Not Configured)
+- Every send attempt logged (provider, event, success, duration, error) to `logs/notifications.log`
+- `TELEGRAM_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` config — all optional, no user setup required yet
+
+### Phase 6.2B — Bot Setup & Live Delivery
+**Status:** Next milestone
+
+- Create bot via BotFather, obtain token and chat ID
+- Document setup step-by-step in `docs/TELEGRAM_SETUP.md`
+- Set `TELEGRAM_ENABLED=true` + credentials and confirm real delivery end-to-end
+- Tune the high-score notification threshold against real scan data
+
+### Phase 6.3 — Final Hardening
+**Status:** Pending
+
 - End-to-end pipeline test (scrape → analyse → dashboard → notify)
 - Error recovery and retry logic for failed scans
 - Performance review (scan duration, API call count, cost estimate)
 - README setup instructions completed and verified
-- Telegram setup documented in docs/TELEGRAM_SETUP.md
 - V1 sign-off: user confirms the system is replacing manual job search
 
 ---

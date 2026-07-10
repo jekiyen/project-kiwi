@@ -15,8 +15,12 @@ class Settings(BaseSettings):
     claude_max_retries: int = 2
 
     # Telegram
+    telegram_enabled: bool = False
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+
+    # Notifications
+    notify_high_score_threshold: int = 80
 
     # Database
     database_url: str = "sqlite:///./kiwi.db"

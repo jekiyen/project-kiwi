@@ -10,6 +10,7 @@ from backend.config.user_profile import USER_PROFILE
 from backend.database.models import Application, ApplicationStatus, Job
 from backend.database.queries import log_application_event
 from backend.database.session import get_session
+from backend.notifications import NotificationEvent, NotificationEventType, notification_service
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -77,7 +78,11 @@ async def analyse_job(job_id: int, session: Session = Depends(get_session)) -> J
 
 
 @router.post("/{job_id}/save")
-async def save_job(job_id: int, session: Session = Depends(get_session)) -> Application:
+async def save_job(
+    job_id: int,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+) -> Application:
     """Save a job. Idempotent — returns the existing application if one already exists."""
     job = session.get(Job, job_id)
     if not job:
@@ -94,11 +99,22 @@ async def save_job(job_id: int, session: Session = Depends(get_session)) -> Appl
     log_application_event(session, app.id, "created", to_status=app.status)
     session.commit()
     session.refresh(app)
+    background_tasks.add_task(
+        notification_service.dispatch,
+        NotificationEvent(
+            type=NotificationEventType.APPLICATION_CREATED,
+            data={"title": job.title, "employer": job.employer, "status": app.status.value},
+        ),
+    )
     return app
 
 
 @router.post("/{job_id}/apply")
-async def apply_to_job(job_id: int, session: Session = Depends(get_session)) -> Application:
+async def apply_to_job(
+    job_id: int,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+) -> Application:
     """Mark a job as applied. Creates the application if it doesn't exist."""
     job = session.get(Job, job_id)
     if not job:
@@ -119,12 +135,33 @@ async def apply_to_job(job_id: int, session: Session = Depends(get_session)) -> 
     session.refresh(app)
     if is_new:
         log_application_event(session, app.id, "created", to_status=app.status)
+        session.commit()
+        session.refresh(app)
+        background_tasks.add_task(
+            notification_service.dispatch,
+            NotificationEvent(
+                type=NotificationEventType.APPLICATION_CREATED,
+                data={"title": job.title, "employer": job.employer, "status": app.status.value},
+            ),
+        )
     elif previous_status != app.status:
         log_application_event(
             session, app.id, "status_change", from_status=previous_status, to_status=app.status
         )
-    session.commit()
-    session.refresh(app)
+        session.commit()
+        session.refresh(app)
+        background_tasks.add_task(
+            notification_service.dispatch,
+            NotificationEvent(
+                type=NotificationEventType.APPLICATION_STATUS_CHANGED,
+                data={
+                    "title": job.title,
+                    "employer": job.employer,
+                    "from_status": previous_status.value,
+                    "to_status": app.status.value,
+                },
+            ),
+        )
     return app
 
 

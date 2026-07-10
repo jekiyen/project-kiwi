@@ -135,6 +135,23 @@ export type PatchApplicationBody = {
   cover_letter_version?: string;
 };
 
+// ── Notifications (Phase 6.2A) ──────────────────────────────────────────────────
+
+export interface ProviderStatus {
+  enabled: boolean;
+  configured: boolean;
+}
+
+export interface NotificationConfig {
+  telegram: ProviderStatus;
+}
+
+export interface TestNotificationResponse {
+  success: boolean;
+  configured: boolean;
+  message: string;
+}
+
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -143,7 +160,8 @@ export const api = {
   scans: () => request<Scan[]>("/scans"),
   triggerScan: () => request<{ message: string }>("/scans/trigger", { method: "POST" }),
   sendTestNotification: () =>
-    request<{ message: string }>("/notifications/test", { method: "POST" }),
+    request<TestNotificationResponse>("/notifications/test", { method: "POST" }),
+  notificationConfig: () => request<NotificationConfig>("/notifications/config"),
 
   // Jobs
   jobs: (limit = 100) => request<Job[]>(`/jobs?limit=${limit}`),

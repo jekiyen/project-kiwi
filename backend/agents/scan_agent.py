@@ -14,6 +14,7 @@ from backend.core.matcher import classify_role
 from backend.database.models import Job, JobChange, Scan, ScanStatus, ScraperRun
 from backend.database.queries import get_job_by_external_id
 from backend.database.session import engine
+from backend.notifications import NotificationEvent, NotificationEventType, notification_service
 from backend.scrapers.base import ScrapedJob
 
 logger = logging.getLogger("scanner")
@@ -49,9 +50,10 @@ class ScanAgent(BaseAgent):
                           for r in scraper_runs if r.status != "failed")
         changed_jobs = max(changed_jobs, 0)
 
-        analyzed = await self._analyze_pending(scan_id)
+        analyzed, high_score_jobs = await self._analyze_pending(scan_id)
 
         scan_duration_ms = int((time.monotonic() - scan_start) * 1000)
+        scan_failed = len(scraper_runs) > 0 and total_errors == len(scraper_runs)
 
         with Session(engine) as session:
             scan = session.get(Scan, scan_id)
@@ -62,7 +64,7 @@ class ScanAgent(BaseAgent):
             scan.total_errors = total_errors
             scan.duration_ms = scan_duration_ms
             scan.completed_at = datetime.utcnow()
-            scan.status = ScanStatus.FAILED if total_errors == len(scraper_runs) else ScanStatus.COMPLETED
+            scan.status = ScanStatus.FAILED if scan_failed else ScanStatus.COMPLETED
             session.add(scan)
             session.commit()
 
@@ -70,6 +72,11 @@ class ScanAgent(BaseAgent):
             "Scan complete — found=%d new=%d dupes=%d errors=%d analyzed=%d duration=%dms",
             total_found, total_inserted, total_dupes, total_errors, analyzed, scan_duration_ms,
         )
+
+        await self._notify_scan_result(
+            scan_failed, scraper_runs, total_found, total_inserted, high_score_jobs
+        )
+
         return AgentResult(
             success=True,
             message=f"Scan complete: {total_inserted} new job(s), {analyzed} scored.",
@@ -81,6 +88,39 @@ class ScanAgent(BaseAgent):
                 "analyzed": analyzed,
             },
         )
+
+    async def _notify_scan_result(
+        self,
+        scan_failed: bool,
+        scraper_runs: list[ScraperRun],
+        total_found: int,
+        total_inserted: int,
+        high_score_jobs: list[dict],
+    ) -> None:
+        """Dispatch a SCAN_COMPLETED or SCAN_FAILED notification. Never raises."""
+        try:
+            if scan_failed:
+                failed_runs = [r for r in scraper_runs if r.status == "failed"]
+                event = NotificationEvent(
+                    type=NotificationEventType.SCAN_FAILED,
+                    data={
+                        "failed_count": len(failed_runs),
+                        "total_scrapers": len(scraper_runs),
+                        "errors": [f"{r.source}: {r.errors}" for r in failed_runs if r.errors],
+                    },
+                )
+            else:
+                event = NotificationEvent(
+                    type=NotificationEventType.SCAN_COMPLETED,
+                    data={
+                        "jobs_found": total_found,
+                        "new_jobs": total_inserted,
+                        "high_priority": len(high_score_jobs),
+                    },
+                )
+            await notification_service.dispatch(event)
+        except Exception:
+            logger.exception("Failed to dispatch scan notification")
 
     async def _run_scrapers(self, scan_id: int) -> tuple[list[ScrapedJob], list[ScraperRun]]:
         from backend.scrapers.seek import SeekScraper
@@ -208,8 +248,8 @@ class ScanAgent(BaseAgent):
         session.commit()
         return new_count, changed_count, dupe_count
 
-    async def _analyze_pending(self, scan_id: int, force: bool = False) -> int:
-        """Score all unanalysed jobs. Returns count scored."""
+    async def _analyze_pending(self, scan_id: int, force: bool = False) -> tuple[int, list[dict]]:
+        """Score all unanalysed jobs. Returns (count scored, high-scoring job summaries)."""
         from backend.ai import get_ai_provider
 
         provider = get_ai_provider()
@@ -221,7 +261,7 @@ class ScanAgent(BaseAgent):
             jobs = list(session.exec(stmt).all())
 
         if not jobs:
-            return 0
+            return 0, []
 
         logger.info(
             "Analyzing %d job(s) with %s (force=%s)",
@@ -240,6 +280,7 @@ class ScanAgent(BaseAgent):
             analysis = await provider.analyze_job(job_data, USER_PROFILE)
             results.append((job.id, analysis))
 
+        high_score_jobs: list[dict] = []
         with Session(engine) as session:
             for job_id, analysis in results:
                 job = session.get(Job, job_id)
@@ -261,7 +302,30 @@ class ScanAgent(BaseAgent):
                 job.ai_model = analysis.model
                 job.ai_analysed_at = datetime.utcnow()
                 session.add(job)
+                if analysis.score >= settings.notify_high_score_threshold:
+                    high_score_jobs.append({
+                        "job_id": job.id,
+                        "title": job.title,
+                        "employer": job.employer,
+                        "location": job.location,
+                        "score": analysis.score,
+                        "reasons": analysis.reasons,
+                        "url": job.url,
+                    })
             session.commit()
 
         logger.info("Analysis complete — %d job(s) scored", len(results))
-        return len(results)
+
+        for hs_job in high_score_jobs:
+            try:
+                await notification_service.dispatch(NotificationEvent(
+                    type=NotificationEventType.HIGH_SCORE_JOB,
+                    data=hs_job,
+                ))
+            except Exception:
+                logger.exception(
+                    "Failed to dispatch HIGH_SCORE_JOB notification for job_id=%s",
+                    hs_job.get("job_id"),
+                )
+
+        return len(results), high_score_jobs

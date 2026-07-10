@@ -8,6 +8,7 @@ LOG_DIR.mkdir(exist_ok=True)
 _NAMED_LOGGERS = {
     "scanner": "scanner.log",
     "telegram": "telegram.log",
+    "notifications": "notifications.log",
     "application": "application.log",
 }
 

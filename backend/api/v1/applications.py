@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
 from backend.database.models import (
@@ -16,6 +16,7 @@ from backend.database.models import (
 )
 from backend.database.queries import get_application_timeline, log_application_event
 from backend.database.session import get_session
+from backend.notifications import NotificationEvent, NotificationEventType, notification_service
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -114,6 +115,7 @@ async def list_applications(
 @router.post("/", status_code=201)
 async def create_application(
     job_id: int,
+    background_tasks: BackgroundTasks,
     status: ApplicationStatus = ApplicationStatus.SAVED,
     notes: Optional[str] = None,
     session: Session = Depends(get_session),
@@ -139,6 +141,13 @@ async def create_application(
     log_application_event(session, app.id, "created", to_status=app.status)
     session.commit()
     session.refresh(app)
+    background_tasks.add_task(
+        notification_service.dispatch,
+        NotificationEvent(
+            type=NotificationEventType.APPLICATION_CREATED,
+            data={"title": job.title, "employer": job.employer, "status": app.status.value},
+        ),
+    )
     return app
 
 
@@ -146,6 +155,7 @@ async def create_application(
 async def update_application(
     application_id: int,
     body: ApplicationUpdate,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
 ) -> Application:
     """Update status, notes, or date fields on an existing application."""
@@ -153,7 +163,10 @@ async def update_application(
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    if body.status is not None and body.status != app.status:
+    status_changed = body.status is not None and body.status != app.status
+    previous_status = app.status
+
+    if status_changed:
         # Auto-set applied_at the first time status moves to APPLIED
         if body.status == ApplicationStatus.APPLIED and app.applied_at is None:
             app.applied_at = datetime.utcnow()
@@ -178,6 +191,21 @@ async def update_application(
     session.add(app)
     session.commit()
     session.refresh(app)
+
+    if status_changed:
+        job = session.get(Job, app.job_id)
+        background_tasks.add_task(
+            notification_service.dispatch,
+            NotificationEvent(
+                type=NotificationEventType.APPLICATION_STATUS_CHANGED,
+                data={
+                    "title": job.title if job else "Unknown role",
+                    "employer": job.employer if job else "",
+                    "from_status": previous_status.value,
+                    "to_status": app.status.value,
+                },
+            ),
+        )
     return app
 
 
