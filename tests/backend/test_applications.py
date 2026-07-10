@@ -207,3 +207,104 @@ def test_filter_by_status(client, seeded_jobs):
     r = client.get("/api/v1/applications/?status=saved")
     assert len(r.json()) == 1
     assert r.json()[0]["status"] == "saved"
+
+
+# ── Resume / cover letter versions ─────────────────────────────────────────────
+
+def test_patch_resume_and_cover_letter_version(client, seeded_job):
+    save_r = client.post(f"/api/v1/jobs/{seeded_job}/save")
+    app_id = save_r.json()["id"]
+    r = client.patch(
+        f"/api/v1/applications/{app_id}",
+        json={"resume_version": "resume_v2_warehouse.pdf", "cover_letter_version": "cl_seek.docx"},
+    )
+    assert r.status_code == 200
+    assert r.json()["resume_version"] == "resume_v2_warehouse.pdf"
+    assert r.json()["cover_letter_version"] == "cl_seek.docx"
+
+
+def test_list_applications_includes_resume_fields(client, seeded_job):
+    client.post(f"/api/v1/jobs/{seeded_job}/save")
+    r = client.get("/api/v1/applications/")
+    assert r.json()[0]["resume_version"] is None
+    assert r.json()[0]["cover_letter_version"] is None
+
+
+# ── Timeline / history ──────────────────────────────────────────────────────────
+
+def test_timeline_logs_creation_on_save(client, seeded_job):
+    save_r = client.post(f"/api/v1/jobs/{seeded_job}/save")
+    app_id = save_r.json()["id"]
+    r = client.get(f"/api/v1/applications/{app_id}/timeline")
+    assert r.status_code == 200
+    events = r.json()
+    assert len(events) == 1
+    assert events[0]["event_type"] == "created"
+    assert events[0]["to_status"] == "saved"
+
+
+def test_timeline_logs_creation_on_apply(client, seeded_job):
+    apply_r = client.post(f"/api/v1/jobs/{seeded_job}/apply")
+    app_id = apply_r.json()["id"]
+    events = client.get(f"/api/v1/applications/{app_id}/timeline").json()
+    assert len(events) == 1
+    assert events[0]["event_type"] == "created"
+    assert events[0]["to_status"] == "applied"
+
+
+def test_timeline_logs_status_change_on_apply_over_saved(client, seeded_job):
+    save_r = client.post(f"/api/v1/jobs/{seeded_job}/save")
+    app_id = save_r.json()["id"]
+    client.post(f"/api/v1/jobs/{seeded_job}/apply")
+
+    events = client.get(f"/api/v1/applications/{app_id}/timeline").json()
+    assert [e["event_type"] for e in events] == ["created", "status_change"]
+    assert events[1]["from_status"] == "saved"
+    assert events[1]["to_status"] == "applied"
+
+
+def test_timeline_logs_status_change_on_patch(client, seeded_job):
+    save_r = client.post(f"/api/v1/jobs/{seeded_job}/save")
+    app_id = save_r.json()["id"]
+    client.patch(f"/api/v1/applications/{app_id}", json={"status": "interview"})
+
+    events = client.get(f"/api/v1/applications/{app_id}/timeline").json()
+    assert [e["event_type"] for e in events] == ["created", "status_change"]
+    assert events[1]["from_status"] == "saved"
+    assert events[1]["to_status"] == "interview"
+
+
+def test_timeline_no_duplicate_event_on_patch_same_status(client, seeded_job):
+    save_r = client.post(f"/api/v1/jobs/{seeded_job}/save")
+    app_id = save_r.json()["id"]
+    client.patch(f"/api/v1/applications/{app_id}", json={"status": "saved"})
+
+    events = client.get(f"/api/v1/applications/{app_id}/timeline").json()
+    assert len(events) == 1
+
+
+def test_timeline_logs_creation_on_direct_post(client, seeded_job):
+    create_r = client.post("/api/v1/applications/", params={"job_id": seeded_job})
+    app_id = create_r.json()["id"]
+    events = client.get(f"/api/v1/applications/{app_id}/timeline").json()
+    assert len(events) == 1
+    assert events[0]["event_type"] == "created"
+
+
+def test_timeline_nonexistent_application_returns_404(client):
+    r = client.get("/api/v1/applications/99999/timeline")
+    assert r.status_code == 404
+
+
+def test_delete_application_removes_its_timeline_events(client, seeded_job):
+    save_r = client.post(f"/api/v1/jobs/{seeded_job}/save")
+    app_id = save_r.json()["id"]
+    client.delete(f"/api/v1/applications/{app_id}")
+
+    # A fresh application may reuse the deleted row's id (SQLite rowid reuse
+    # on an empty table) — its timeline must not inherit the old app's events.
+    new_r = client.post(f"/api/v1/jobs/{seeded_job}/save")
+    new_app_id = new_r.json()["id"]
+    events = client.get(f"/api/v1/applications/{new_app_id}/timeline").json()
+    assert len(events) == 1
+    assert events[0]["event_type"] == "created"

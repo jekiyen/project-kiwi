@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from backend.ai import get_ai_provider
 from backend.config.user_profile import USER_PROFILE
 from backend.database.models import Application, ApplicationStatus, Job
+from backend.database.queries import log_application_event
 from backend.database.session import get_session
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -90,6 +91,9 @@ async def save_job(job_id: int, session: Session = Depends(get_session)) -> Appl
     session.add(app)
     session.commit()
     session.refresh(app)
+    log_application_event(session, app.id, "created", to_status=app.status)
+    session.commit()
+    session.refresh(app)
     return app
 
 
@@ -102,13 +106,23 @@ async def apply_to_job(job_id: int, session: Session = Depends(get_session)) -> 
     app = session.exec(
         select(Application).where(Application.job_id == job_id)
     ).first()
+    is_new = app is None
     if app is None:
         app = Application(job_id=job_id)
+    previous_status = app.status
     app.status = ApplicationStatus.APPLIED
     if app.applied_at is None:
         app.applied_at = datetime.utcnow()
     app.updated_at = datetime.utcnow()
     session.add(app)
+    session.commit()
+    session.refresh(app)
+    if is_new:
+        log_application_event(session, app.id, "created", to_status=app.status)
+    elif previous_status != app.status:
+        log_application_event(
+            session, app.id, "status_change", from_status=previous_status, to_status=app.status
+        )
     session.commit()
     session.refresh(app)
     return app

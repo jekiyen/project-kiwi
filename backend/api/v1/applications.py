@@ -7,12 +7,14 @@ from sqlmodel import Session, select
 
 from backend.database.models import (
     Application,
+    ApplicationEvent,
     ApplicationStatus,
     ApplicationUpdate,
     ApplicationWithJob,
     Job,
     PipelineCounts,
 )
+from backend.database.queries import get_application_timeline, log_application_event
 from backend.database.session import get_session
 
 router = APIRouter(prefix="/applications", tags=["applications"])
@@ -27,6 +29,8 @@ def _build_with_job(app: Application, job: Job) -> ApplicationWithJob:
         applied_at=app.applied_at,
         interview_date=app.interview_date,
         follow_up_date=app.follow_up_date,
+        resume_version=app.resume_version,
+        cover_letter_version=app.cover_letter_version,
         created_at=app.created_at,
         updated_at=app.updated_at,
         job_title=job.title,
@@ -63,6 +67,20 @@ async def get_pipeline(session: Session = Depends(get_session)) -> PipelineCount
         archived=counts.get("archived", 0),
         total=total,
     )
+
+
+# ── Timeline — registered before /{id} to avoid route conflict ────────────────
+
+@router.get("/{application_id}/timeline")
+async def get_timeline(
+    application_id: int,
+    session: Session = Depends(get_session),
+) -> list[ApplicationEvent]:
+    """Return the chronological history of events for an application."""
+    app = session.get(Application, application_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return get_application_timeline(session, application_id)
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -118,6 +136,9 @@ async def create_application(
     session.add(app)
     session.commit()
     session.refresh(app)
+    log_application_event(session, app.id, "created", to_status=app.status)
+    session.commit()
+    session.refresh(app)
     return app
 
 
@@ -132,10 +153,13 @@ async def update_application(
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    if body.status is not None:
+    if body.status is not None and body.status != app.status:
         # Auto-set applied_at the first time status moves to APPLIED
         if body.status == ApplicationStatus.APPLIED and app.applied_at is None:
             app.applied_at = datetime.utcnow()
+        log_application_event(
+            session, app.id, "status_change", from_status=app.status, to_status=body.status
+        )
         app.status = body.status
     if body.notes is not None:
         app.notes = body.notes
@@ -145,6 +169,10 @@ async def update_application(
         app.interview_date = body.interview_date
     if body.follow_up_date is not None:
         app.follow_up_date = body.follow_up_date
+    if body.resume_version is not None:
+        app.resume_version = body.resume_version
+    if body.cover_letter_version is not None:
+        app.cover_letter_version = body.cover_letter_version
 
     app.updated_at = datetime.utcnow()
     session.add(app)
@@ -158,9 +186,14 @@ async def delete_application(
     application_id: int,
     session: Session = Depends(get_session),
 ) -> None:
-    """Remove an application record."""
+    """Remove an application record and its timeline history."""
     app = session.get(Application, application_id)
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
+    events = session.exec(
+        select(ApplicationEvent).where(ApplicationEvent.application_id == application_id)
+    ).all()
+    for event in events:
+        session.delete(event)
     session.delete(app)
     session.commit()

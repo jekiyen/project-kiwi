@@ -86,8 +86,20 @@ export interface Application {
   applied_at: string | null;
   interview_date: string | null;
   follow_up_date: string | null;
+  resume_version: string | null;
+  cover_letter_version: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ApplicationEvent {
+  id: number;
+  application_id: number;
+  event_type: "created" | "status_change" | "note_updated";
+  from_status: ApplicationStatus | null;
+  to_status: ApplicationStatus | null;
+  detail: string | null;
+  created_at: string;
 }
 
 export interface ApplicationWithJob extends Application {
@@ -119,6 +131,8 @@ export type PatchApplicationBody = {
   applied_at?: string;
   interview_date?: string;
   follow_up_date?: string;
+  resume_version?: string;
+  cover_letter_version?: string;
 };
 
 // ── API object ────────────────────────────────────────────────────────────────
@@ -151,6 +165,8 @@ export const api = {
     return request<ApplicationWithJob[]>(`/applications/${qs ? `?${qs}` : ""}`);
   },
   pipeline: () => request<PipelineCounts>("/applications/pipeline"),
+  applicationTimeline: (id: number) =>
+    request<ApplicationEvent[]>(`/applications/${id}/timeline`),
   patchApplication: (id: number, body: PatchApplicationBody) =>
     request<Application>(`/applications/${id}`, {
       method: "PATCH",

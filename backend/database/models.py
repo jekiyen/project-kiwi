@@ -73,8 +73,21 @@ class Application(SQLModel, table=True):
     applied_at: Optional[datetime] = None
     interview_date: Optional[datetime] = None
     follow_up_date: Optional[datetime] = None
+    resume_version: Optional[str] = None
+    cover_letter_version: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ApplicationEvent(SQLModel, table=True):
+    """Timeline/history entry recording a lifecycle event for an application."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    application_id: int = Field(foreign_key="application.id", index=True)
+    event_type: str  # "created" | "status_change" | "note_updated"
+    from_status: Optional[ApplicationStatus] = None
+    to_status: Optional[ApplicationStatus] = None
+    detail: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # ── Request / response models (not DB tables) ─────────────────────────────────
@@ -86,6 +99,8 @@ class ApplicationUpdate(SQLModel):
     applied_at: Optional[datetime] = None
     interview_date: Optional[datetime] = None
     follow_up_date: Optional[datetime] = None
+    resume_version: Optional[str] = None
+    cover_letter_version: Optional[str] = None
 
 
 class ApplicationWithJob(SQLModel):
@@ -98,6 +113,8 @@ class ApplicationWithJob(SQLModel):
     applied_at: Optional[datetime]
     interview_date: Optional[datetime]
     follow_up_date: Optional[datetime]
+    resume_version: Optional[str]
+    cover_letter_version: Optional[str]
     created_at: datetime
     updated_at: datetime
     # Job fields

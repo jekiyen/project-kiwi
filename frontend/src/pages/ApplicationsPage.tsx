@@ -1,13 +1,53 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ApplicationWithJob, type ApplicationStatus } from "../api/client";
+import { api, type ApplicationWithJob, type ApplicationStatus, type ApplicationEvent } from "../api/client";
 import {
   AppStatusBadge,
   APP_STATUS_LABELS,
   ALL_STATUSES,
   formatDate,
+  formatRelativeTime,
   scoreColor,
 } from "../shared";
+
+// ── Timeline ──────────────────────────────────────────────────────────────────
+
+function timelineEventLabel(event: ApplicationEvent): string {
+  if (event.event_type === "created") {
+    return `Application created — ${APP_STATUS_LABELS[event.to_status as ApplicationStatus]}`;
+  }
+  if (event.event_type === "status_change") {
+    const from = event.from_status ? APP_STATUS_LABELS[event.from_status] : "—";
+    const to = event.to_status ? APP_STATUS_LABELS[event.to_status] : "—";
+    return `${from} → ${to}`;
+  }
+  return event.detail ?? event.event_type;
+}
+
+function Timeline({ applicationId }: { applicationId: number }) {
+  const { data: events = [], isLoading, isError } = useQuery({
+    queryKey: ["applicationTimeline", applicationId],
+    queryFn: () => api.applicationTimeline(applicationId),
+  });
+
+  if (isLoading) return <p className="text-xs text-gray-600 mt-2">Loading history…</p>;
+  if (isError) return <p className="text-xs text-red-400 mt-2">Couldn't load history.</p>;
+  if (events.length === 0) return <p className="text-xs text-gray-600 mt-2">No history yet.</p>;
+
+  return (
+    <ol className="mt-2 space-y-2 border-l border-gray-800 pl-3">
+      {events.map((event) => (
+        <li key={event.id} className="relative text-xs">
+          <span className="absolute -left-[15px] top-1 w-2 h-2 rounded-full bg-gray-600" />
+          <p className="text-gray-300">{timelineEventLabel(event)}</p>
+          <p className="text-gray-600" title={formatDate(event.created_at)}>
+            {formatRelativeTime(event.created_at)}
+          </p>
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 // ── Status filter tabs ─────────────────────────────────────────────────────────
 
@@ -35,6 +75,9 @@ function AppCard({ app, onPatch, onDelete, isSaving }: AppCardProps) {
   const [followUpDate, setFollowUpDate] = useState(
     app.follow_up_date ? app.follow_up_date.slice(0, 10) : ""
   );
+  const [resumeVersion, setResumeVersion] = useState(app.resume_version ?? "");
+  const [coverLetterVersion, setCoverLetterVersion] = useState(app.cover_letter_version ?? "");
+  const [showTimeline, setShowTimeline] = useState(false);
 
   // Sync local state when server data refreshes
   useEffect(() => setNotes(app.notes ?? ""), [app.notes]);
@@ -45,6 +88,11 @@ function AppCard({ app, onPatch, onDelete, isSaving }: AppCardProps) {
   useEffect(
     () => setFollowUpDate(app.follow_up_date ? app.follow_up_date.slice(0, 10) : ""),
     [app.follow_up_date]
+  );
+  useEffect(() => setResumeVersion(app.resume_version ?? ""), [app.resume_version]);
+  useEffect(
+    () => setCoverLetterVersion(app.cover_letter_version ?? ""),
+    [app.cover_letter_version]
   );
 
   return (
@@ -162,11 +210,57 @@ function AppCard({ app, onPatch, onDelete, isSaving }: AppCardProps) {
             />
           </div>
         </div>
+
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
+              Resume Version
+            </label>
+            <input
+              type="text"
+              value={resumeVersion}
+              onChange={(e) => setResumeVersion(e.target.value)}
+              onBlur={() => {
+                if (resumeVersion !== (app.resume_version ?? "")) {
+                  onPatch({ resume_version: resumeVersion });
+                }
+              }}
+              placeholder="e.g. resume_v2_warehouse.pdf"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500 transition-colors"
+            />
+          </div>
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
+              Cover Letter Version
+            </label>
+            <input
+              type="text"
+              value={coverLetterVersion}
+              onChange={(e) => setCoverLetterVersion(e.target.value)}
+              onBlur={() => {
+                if (coverLetterVersion !== (app.cover_letter_version ?? "")) {
+                  onPatch({ cover_letter_version: coverLetterVersion });
+                }
+              }}
+              placeholder="e.g. cl_seek_fruitpicker.docx"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500 transition-colors"
+            />
+          </div>
+        </div>
       </div>
 
-      <p className="text-xs text-gray-600 mt-2">
-        Updated {formatDate(app.updated_at)}
-      </p>
+      <div className="flex items-center justify-between mt-3">
+        <p className="text-xs text-gray-600">Updated {formatDate(app.updated_at)}</p>
+        <button
+          type="button"
+          onClick={() => setShowTimeline((v) => !v)}
+          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          {showTimeline ? "Hide history" : "Show history"}
+        </button>
+      </div>
+
+      {showTimeline && <Timeline applicationId={app.id} />}
     </div>
   );
 }

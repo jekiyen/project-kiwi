@@ -1,6 +1,8 @@
+from typing import Optional
+
 from sqlmodel import Session, select
 
-from backend.database.models import Job, Scan, ScraperRun
+from backend.database.models import ApplicationEvent, ApplicationStatus, Job, Scan, ScraperRun
 
 
 def get_job_by_external_id(session: Session, external_id: str, source: str) -> Job | None:
@@ -23,5 +25,35 @@ def get_active_jobs(session: Session, limit: int = 100, offset: int = 0) -> list
             .order_by(Job.ai_match_score.desc(), Job.first_seen_at.desc())
             .offset(offset)
             .limit(limit)
+        ).all()
+    )
+
+
+def log_application_event(
+    session: Session,
+    application_id: int,
+    event_type: str,
+    from_status: Optional[ApplicationStatus] = None,
+    to_status: Optional[ApplicationStatus] = None,
+    detail: Optional[str] = None,
+) -> ApplicationEvent:
+    """Record a timeline entry for an application. Caller is responsible for commit."""
+    event = ApplicationEvent(
+        application_id=application_id,
+        event_type=event_type,
+        from_status=from_status,
+        to_status=to_status,
+        detail=detail,
+    )
+    session.add(event)
+    return event
+
+
+def get_application_timeline(session: Session, application_id: int) -> list[ApplicationEvent]:
+    return list(
+        session.exec(
+            select(ApplicationEvent)
+            .where(ApplicationEvent.application_id == application_id)
+            .order_by(ApplicationEvent.created_at.asc())
         ).all()
     )

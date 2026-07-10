@@ -1,13 +1,21 @@
 import type { ApplicationStatus } from "./api/client";
 
+// Backend serializes naive UTC datetimes with no timezone designator
+// (e.g. "2026-07-10T06:33:02"). JS Date parses that as local time, so
+// treat it as UTC explicitly before handing it to Date.
+function toUtcDate(iso: string): Date {
+  const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(iso);
+  return new Date(hasTimezone ? iso : `${iso}Z`);
+}
+
 export function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString();
+  return toUtcDate(iso).toLocaleString();
 }
 
 export function formatRelativeTime(iso: string | null): string {
   if (!iso) return "—";
-  const then = new Date(iso).getTime();
+  const then = toUtcDate(iso).getTime();
   const now = Date.now();
   const diffSec = Math.round((then - now) / 1000);
   const absSec = Math.abs(diffSec);
