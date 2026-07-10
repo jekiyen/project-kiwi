@@ -52,7 +52,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[f"http://localhost:{settings.frontend_port}"],
+    # "localhost" and "127.0.0.1" are different origins to a browser even
+    # though they resolve to the same machine — allow both so the dashboard
+    # works regardless of which one the user's browser ends up using.
+    allow_origins=[
+        f"http://localhost:{settings.frontend_port}",
+        f"http://127.0.0.1:{settings.frontend_port}",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )

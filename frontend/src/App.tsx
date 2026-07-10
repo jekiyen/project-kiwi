@@ -27,8 +27,33 @@ import NotificationsPage from "./pages/NotificationsPage";
 import ResumePage from "./pages/ResumePage";
 import { ToastProvider, useToast } from "./hooks/useToast";
 
+// A downed backend can surface two different ways depending on how the
+// request reached it:
+//  - fetch() throws a plain TypeError ("Failed to fetch") when nothing at
+//    all is listening on the page's own origin (e.g. the Vite dev server
+//    itself is mid-restart).
+//  - When Vite's dev proxy IS up but the backend it forwards to isn't, the
+//    browser gets a real HTTP response — a 502/500 from the proxy — which
+//    our request() helper turns into a plain Error ending in "failed: 5xx".
+// Both are transient (the server is starting up / restarting) and worth
+// retrying harder than a real 4xx, which means the request itself was bad
+// and hammering it won't help.
+function isTransientError(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  if (error instanceof Error) {
+    const status = Number(error.message.match(/failed: (\d{3})$/)?.[1]);
+    if (!Number.isNaN(status)) return status >= 500;
+  }
+  return false;
+}
+
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error) => (isTransientError(error) ? failureCount < 5 : failureCount < 1),
+      staleTime: 30_000,
+    },
+  },
 });
 
 type JobSort = "score_desc" | "score_asc" | "newest" | "oldest" | "employer";
