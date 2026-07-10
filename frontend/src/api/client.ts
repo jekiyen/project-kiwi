@@ -183,6 +183,61 @@ export interface ChatIdDetectionResponse {
   message: string;
 }
 
+// ── Resume Library (Phase 7.1) ──────────────────────────────────────────────────
+
+export type ResumeParseStatus = "pending" | "parsed" | "failed";
+
+export interface EducationEntry {
+  institution: string;
+  qualification: string;
+  dates: string;
+}
+
+export interface ExperienceEntry {
+  title: string;
+  company: string;
+  dates: string;
+  description: string;
+}
+
+export interface Resume {
+  id: number;
+  original_filename: string;
+  version_name: string;
+  file_type: "pdf" | "docx";
+  is_active: boolean;
+  parse_status: ResumeParseStatus;
+  parser_version: string | null;
+  parse_error: string | null;
+  uploaded_at: string;
+  updated_at: string;
+  raw_text: string | null;
+  parsed_name: string | null;
+  parsed_email: string | null;
+  parsed_phone: string | null;
+  parsed_linkedin: string | null;
+  parsed_portfolio: string | null;
+  parsed_skills: string[];
+  parsed_companies: string[];
+  parsed_job_titles: string[];
+  parsed_education: EducationEntry[];
+  parsed_experience: ExperienceEntry[];
+}
+
+export type PatchResumeBody = {
+  version_name?: string;
+  parsed_name?: string;
+  parsed_email?: string;
+  parsed_phone?: string;
+  parsed_linkedin?: string;
+  parsed_portfolio?: string;
+  parsed_skills?: string[];
+  parsed_companies?: string[];
+  parsed_job_titles?: string[];
+  parsed_education?: EducationEntry[];
+  parsed_experience?: ExperienceEntry[];
+};
+
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -227,6 +282,34 @@ export const api = {
     const res = await fetch(`${BASE}/applications/${id}`, { method: "DELETE" });
     if (!res.ok) {
       throw new Error(await extractErrorMessage(res, `/applications/${id}`, "DELETE"));
+    }
+  },
+
+  // Resume Library
+  resumes: () => request<Resume[]>("/resumes/"),
+  resume: (id: number) => request<Resume>(`/resumes/${id}`),
+  uploadResume: async (file: File, versionName?: string): Promise<Resume> => {
+    const form = new FormData();
+    form.append("file", file);
+    if (versionName) form.append("version_name", versionName);
+    const res = await fetch(`${BASE}/resumes/upload`, { method: "POST", body: form });
+    if (!res.ok) {
+      throw new Error(await extractErrorMessage(res, "/resumes/upload", "POST"));
+    }
+    return res.json() as Promise<Resume>;
+  },
+  activateResume: (id: number) =>
+    request<Resume>(`/resumes/${id}/activate`, { method: "POST" }),
+  patchResume: (id: number, body: PatchResumeBody) =>
+    request<Resume>(`/resumes/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  deleteResume: async (id: number): Promise<void> => {
+    const res = await fetch(`${BASE}/resumes/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      throw new Error(await extractErrorMessage(res, `/resumes/${id}`, "DELETE"));
     }
   },
 };

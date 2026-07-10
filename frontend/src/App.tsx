@@ -24,6 +24,7 @@ import {
 } from "./shared";
 import ApplicationsPage from "./pages/ApplicationsPage";
 import NotificationsPage from "./pages/NotificationsPage";
+import ResumePage from "./pages/ResumePage";
 import { ToastProvider, useToast } from "./hooks/useToast";
 
 const queryClient = new QueryClient({
@@ -393,6 +394,15 @@ function Sidebar() {
           Applications
         </NavLink>
         <NavLink
+          to="/resume"
+          className={({ isActive }) =>
+            `${navLink} ${isActive ? activeClass : inactiveClass}`
+          }
+        >
+          <span>📄</span>
+          Resume
+        </NavLink>
+        <NavLink
           to="/scan-history"
           className={({ isActive }) =>
             `${navLink} ${isActive ? activeClass : inactiveClass}`
@@ -672,6 +682,7 @@ function AppShell() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/applications" element={<ApplicationsPage />} />
+          <Route path="/resume" element={<ResumePage />} />
           <Route path="/scan-history" element={<ScanHistoryPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
         </Routes>

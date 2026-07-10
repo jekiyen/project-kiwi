@@ -198,3 +198,83 @@ class JobChange(SQLModel, table=True):
     old_value: Optional[str] = None
     new_value: Optional[str] = None
     detected_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ── Resume Library (Phase 7.1) ─────────────────────────────────────────────────
+
+class ResumeParseStatus(str, Enum):
+    PENDING = "pending"
+    PARSED = "parsed"
+    FAILED = "failed"
+
+
+class Resume(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    original_filename: str
+    stored_filename: str = Field(index=True)  # UUID-based — never trust user input for file paths
+    version_name: str
+    file_type: str  # "pdf" | "docx"
+    is_active: bool = False
+    parse_status: ResumeParseStatus = ResumeParseStatus.PENDING
+    parser_version: Optional[str] = None
+    parse_error: Optional[str] = None
+    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    raw_text: Optional[str] = None
+
+    # Parsed contact/profile fields
+    parsed_name: Optional[str] = None
+    parsed_email: Optional[str] = None
+    parsed_phone: Optional[str] = None
+    parsed_linkedin: Optional[str] = None
+    parsed_portfolio: Optional[str] = None
+
+    # Parsed structured data — JSON-encoded, decoded into ResumeResponse for the API
+    parsed_skills: Optional[str] = None       # JSON list[str]
+    parsed_companies: Optional[str] = None    # JSON list[str]
+    parsed_job_titles: Optional[str] = None   # JSON list[str]
+    parsed_education: Optional[str] = None    # JSON list[dict]
+    parsed_experience: Optional[str] = None   # JSON list[dict]
+
+
+class ResumeUpdate(SQLModel):
+    """Fields that can be changed via PATCH /resumes/{id} — rename plus manual
+    corrections to whatever the parser got wrong. No AI rewriting in this phase."""
+    version_name: Optional[str] = Field(default=None, max_length=255)
+    parsed_name: Optional[str] = Field(default=None, max_length=255)
+    parsed_email: Optional[str] = Field(default=None, max_length=255)
+    parsed_phone: Optional[str] = Field(default=None, max_length=100)
+    parsed_linkedin: Optional[str] = Field(default=None, max_length=500)
+    parsed_portfolio: Optional[str] = Field(default=None, max_length=500)
+    parsed_skills: Optional[list[str]] = None
+    parsed_companies: Optional[list[str]] = None
+    parsed_job_titles: Optional[list[str]] = None
+    parsed_education: Optional[list[dict]] = None
+    parsed_experience: Optional[list[dict]] = None
+
+
+class ResumeResponse(SQLModel):
+    """Resume with JSON fields decoded into real lists — used for both the
+    library list view and the detail view."""
+    id: int
+    original_filename: str
+    version_name: str
+    file_type: str
+    is_active: bool
+    parse_status: ResumeParseStatus
+    parser_version: Optional[str]
+    parse_error: Optional[str]
+    uploaded_at: datetime
+    updated_at: datetime
+    raw_text: Optional[str]
+    parsed_name: Optional[str]
+    parsed_email: Optional[str]
+    parsed_phone: Optional[str]
+    parsed_linkedin: Optional[str]
+    parsed_portfolio: Optional[str]
+    parsed_skills: list[str] = []
+    parsed_companies: list[str] = []
+    parsed_job_titles: list[str] = []
+    parsed_education: list[dict] = []
+    parsed_experience: list[dict] = []

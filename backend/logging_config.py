@@ -27,6 +27,27 @@ class RequestIDFilter(logging.Filter):
         return True
 
 
+class SecretRedactionFilter(logging.Filter):
+    """Scrubs known secrets from every log record before it's emitted.
+
+    Defense in depth: some third-party HTTP clients (httpx, used by
+    python-telegram-bot) log the full request URL at INFO level, which for
+    the Telegram Bot API includes the bot token in the path itself —
+    bypassing the manual redact_token() calls in backend/notifications/telegram.py.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        from backend.config.settings import settings
+
+        token = settings.telegram_bot_token
+        if token:
+            message = record.getMessage()
+            if token in message:
+                record.msg = message.replace(token, "***REDACTED***")
+                record.args = ()
+        return True
+
+
 class LocalTimeFormatter(logging.Formatter):
     """Renders %(asctime)s in Asia/Jakarta regardless of host system timezone."""
 
@@ -42,6 +63,7 @@ def setup_logging(level: str = "INFO") -> None:
     fmt = "%(asctime)s [%(levelname)s] [%(request_id)s] %(name)s: %(message)s"
     formatter = LocalTimeFormatter(fmt, datefmt="%Y-%m-%dT%H:%M:%S")
     request_id_filter = RequestIDFilter()
+    secret_filter = SecretRedactionFilter()
 
     def rotating_handler(filename: str) -> logging.Handler:
         h = logging.handlers.RotatingFileHandler(
@@ -52,11 +74,13 @@ def setup_logging(level: str = "INFO") -> None:
         )
         h.setFormatter(formatter)
         h.addFilter(request_id_filter)
+        h.addFilter(secret_filter)
         return h
 
     console = logging.StreamHandler()
     console.setFormatter(formatter)
     console.addFilter(request_id_filter)
+    console.addFilter(secret_filter)
 
     # errors.log captures ERROR+ from all loggers
     error_handler = rotating_handler("errors.log")
@@ -72,3 +96,10 @@ def setup_logging(level: str = "INFO") -> None:
         log.setLevel(level)
         log.addHandler(rotating_handler(filename))
         log.propagate = True
+
+    # httpx/httpcore log every request at INFO, including the full URL — for
+    # the Telegram Bot API that URL contains the bot token. The redaction
+    # filter above already protects against it, but there's no reason to keep
+    # this noisy either; WARNING is plenty.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)

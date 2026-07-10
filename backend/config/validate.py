@@ -36,6 +36,8 @@ def validate_settings(settings: Settings) -> None:
         errors.append("NOTIFY_HIGH_SCORE_THRESHOLD must be between 0 and 100")
     if not settings.database_url:
         errors.append("DATABASE_URL must not be empty")
+    if settings.resume_max_file_size_mb <= 0:
+        errors.append("RESUME_MAX_FILE_SIZE_MB must be greater than 0")
 
     if errors:
         details = "\n".join(f"  - {e}" for e in errors)

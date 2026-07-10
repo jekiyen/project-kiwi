@@ -170,16 +170,36 @@ Development follows a phase-by-phase approach: each phase must be stable before 
 
 ## Post-V1 Phases
 
-### Phase 7 — Automated Applications
+### Phase 7 — Resume Intelligence
+
+#### Phase 7.1 — Resume Library & Resume Intelligence Foundation
+**Status:** Complete
+
+- `Resume` model: original filename, version name, upload date, active flag, parse status, parser version, extracted text, parsed profile fields
+- PDF upload (`pypdf`) and DOCX upload (`python-docx`), files stored under server-generated UUID names — original filenames are display metadata only, never trusted for file paths
+- `RegexResumeParser` — deterministic, no AI: name, email, phone, LinkedIn, portfolio, skills, companies, job titles, education, experience (with dates and descriptions)
+- Parser is behind a `ResumeParser` interface (`backend/resume/base.py`) with a single switch point (`get_resume_parser()`) — a Phase 7.2 AI-based parser plugs in without touching the API, storage, or frontend
+- API: `GET/POST /resumes/`, `GET/PATCH/DELETE /resumes/{id}`, `POST /resumes/{id}/activate` (exactly one resume active at a time)
+- Frontend: new **Resume** sidebar page — library with upload, active/parse-status badges, rename, delete, set-active; detail panel with manual editing of every parsed field (profile fields, skills, experience entries, education entries) — no AI rewriting in this phase
+- 46 new backend tests (parser field extraction, text extraction from real generated PDF/DOCX fixtures, full upload/CRUD/activate lifecycle)
+
+**Real bugs found and fixed during verification:**
+- The block-grouping heuristic split one job entry into two whenever the date range sat on its own line, silently dropping the description. Fixed and covered by a regression test.
+- Portfolio-URL extraction matched inside the email address itself (`rizky.pratama` from `rizky.pratama@email.com`) because the URL regex doesn't know about `@`. Fixed by blanking the matched email out of the search text first.
+- **Security:** `httpx` (used internally by python-telegram-bot) logs full request URLs at INFO level — for the Telegram Bot API that URL contains the bot token in the path, leaking it straight to console/log output and bypassing the Phase 6.3 `redact_token()` defense entirely. Fixed with a `SecretRedactionFilter` applied to every log handler, plus raising `httpx`/`httpcore` to WARNING.
+
+#### Phase 7.2 — AI Resume Analysis
+**Status:** Next milestone
+
+- AI-based `ResumeParser` implementation (higher accuracy than the regex parser, same interface)
+- Keyword gap analysis: resume vs. job description
+- Cover letter generation tailored per job description
+- User approval workflow for all AI-suggested changes
+
+### Phase 8 — Automated Applications
 - Web form detection and auto-fill per employer site
 - Email application sending with tailored content
 - Application confirmation and receipt tracking
-
-### Phase 8 — Resume Intelligence
-- Cover letter generation tailored per job description
-- Keyword gap analysis: resume vs. job description
-- Multiple resume versions by job category
-- User approval workflow for all AI-suggested changes
 
 ### Phase 9 — Visa Advisor
 - Accredited Employer Work Visa pathway guide

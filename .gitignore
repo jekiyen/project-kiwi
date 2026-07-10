@@ -18,6 +18,9 @@ build/
 # Logs
 logs/*.log
 
+# Uploaded files (resumes, etc.)
+data/uploads/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

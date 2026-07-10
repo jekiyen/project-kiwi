@@ -15,6 +15,7 @@ from backend.database.models import (  # noqa: F401, E402
     ApplicationEvent,
     Job,
     JobChange,
+    Resume,
     Scan,
     ScraperRun,
 )

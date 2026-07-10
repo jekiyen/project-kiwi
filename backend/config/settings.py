@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite:///./kiwi.db"
 
+    # Resume storage
+    resume_upload_dir: str = "data/uploads/resumes"
+    resume_max_file_size_mb: int = 10
+
     # Scheduler
     scan_interval_hours: int = 6
 
