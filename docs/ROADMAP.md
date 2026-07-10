@@ -133,13 +133,18 @@ Development follows a phase-by-phase approach: each phase must be stable before 
 - Every send attempt logged (provider, event, success, duration, error) to `logs/notifications.log`
 - `TELEGRAM_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` config — all optional, no user setup required yet
 
-### Phase 6.2B — Bot Setup & Live Delivery
-**Status:** Next milestone
+### Phase 6.2B — Live Telegram Integration
+**Status:** Complete
 
-- Create bot via BotFather, obtain token and chat ID
-- Document setup step-by-step in `docs/TELEGRAM_SETUP.md`
-- Set `TELEGRAM_ENABLED=true` + credentials and confirm real delivery end-to-end
-- Tune the high-score notification threshold against real scan data
+- `TelegramProvider.check_connection()` — live `getMe()` health check, separate from the fast local `is_configured()` used on every dispatch
+- `TelegramProvider.detect_chats()` — reads `getUpdates` to surface candidate chat IDs; never writes `TELEGRAM_CHAT_ID` automatically
+- `GET /api/v1/notifications/chat-id` — chat ID detection endpoint (bot token → detected chats, or a friendly reason why not)
+- `POST /api/v1/notifications/test` sends the real `"🥝 Kiwi Test"` message with a live timestamp when configured; returns exactly which `.env` vars are missing when not
+- `GET /api/v1/notifications/config` now reports bot token presence, live bot connectivity, and chat ID presence separately
+- Startup log line per provider: `ACTIVE` or `DISABLED` (local check, no network call at boot)
+- Notifications page: Bot Status (Connected/Disconnected), Chat ID (Detected/Not Configured), Detect Chat ID button
+- `docs/TELEGRAM_SETUP.md` rewritten around the in-app detection flow; README links it
+- 35 new backend tests — chat detection, bad token, missing vars, provider active/disabled, mocked Telegram API throughout (no real network calls in the suite)
 
 ### Phase 6.3 — Final Hardening
 **Status:** Pending

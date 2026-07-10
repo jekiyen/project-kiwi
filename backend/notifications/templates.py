@@ -89,14 +89,16 @@ def _application_status_changed(data: dict) -> str:
     ])
 
 
-def _test(_data: dict) -> str:
-    return "\n".join([
-        BRAND,
+def _test(data: dict) -> str:
+    timestamp = _esc(data.get("timestamp", ""))
+    lines = [
+        "🥝 <b>Kiwi Test</b>",
         "",
-        "<b>Test Notification</b>",
-        "",
-        "If you can read this, notifications are working correctly.",
-    ])
+        "Telegram integration successful.",
+    ]
+    if timestamp:
+        lines += ["", "Current time:", timestamp]
+    return "\n".join(lines)
 
 
 _FORMATTERS = {

@@ -10,6 +10,7 @@ from backend.api.v1 import applications, health, jobs, notifications, scans
 from backend.config.settings import settings
 from backend.database.session import create_db_and_tables
 from backend.logging_config import setup_logging
+from backend.notifications import notification_service
 from backend.scheduler.scheduler import register_agent, scheduler
 
 logger = logging.getLogger("application")
@@ -23,6 +24,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     scan_agent = ScanAgent()
     register_agent(scan_agent)
     scheduler.start()
+
+    for name, active in (await notification_service.provider_statuses()).items():
+        logger.info("Notification provider '%s': %s", name, "ACTIVE" if active else "DISABLED")
 
     logger.info("Project Kiwi backend started (AI provider: %s)", settings.ai_provider)
     yield

@@ -1,18 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 
-function StatusBadge({ configured }: { configured: boolean }) {
+function StatusBadge({ ok, onLabel, offLabel }: { ok: boolean; onLabel: string; offLabel: string }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium ${
-        configured
+        ok
           ? "bg-green-900/50 text-green-300 ring-1 ring-green-800/50"
           : "bg-gray-800 text-gray-400 ring-1 ring-gray-700"
       }`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${configured ? "bg-green-400" : "bg-gray-500"}`} />
-      {configured ? "Configured" : "Not Configured"}
+      <span className={`w-1.5 h-1.5 rounded-full ${ok ? "bg-green-400" : "bg-gray-500"}`} />
+      {ok ? onLabel : offLabel}
     </span>
+  );
+}
+
+function StatusRow({ label, ok, onLabel, offLabel }: { label: string; ok: boolean; onLabel: string; offLabel: string }) {
+  return (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-sm text-gray-400">{label}</span>
+      <StatusBadge ok={ok} onLabel={onLabel} offLabel={offLabel} />
+    </div>
   );
 }
 
@@ -37,8 +46,29 @@ export default function NotificationsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notificationConfig"] }),
   });
 
-  const configured = config?.telegram.configured ?? false;
-  const enabled = config?.telegram.enabled ?? false;
+  const detectMutation = useMutation({
+    mutationFn: api.detectChatId,
+  });
+
+  const telegram = config?.telegram;
+  const configured = telegram?.configured ?? false;
+  const botConnected = telegram?.bot_connected ?? false;
+  const chatIdPresent = telegram?.chat_id_present ?? false;
+  const botTokenPresent = telegram?.bot_token_present ?? false;
+
+  let explanation: string;
+  if (configured) {
+    explanation = "Telegram is fully set up. You'll receive alerts for high-match jobs, scan results, and application updates.";
+  } else if (!botTokenPresent) {
+    explanation =
+      "Telegram notifications aren't set up yet. Add TELEGRAM_BOT_TOKEN to your .env file, restart the backend, then use Detect Chat ID below.";
+  } else if (!botConnected) {
+    explanation = "A bot token is set, but Telegram couldn't be reached — double check TELEGRAM_BOT_TOKEN is correct.";
+  } else if (!chatIdPresent) {
+    explanation = "Bot is connected. Click Detect Chat ID below, message your bot on Telegram, then copy the chat ID into TELEGRAM_CHAT_ID in your .env file.";
+  } else {
+    explanation = "Everything is set except TELEGRAM_ENABLED — set it to true in your .env file and restart the backend.";
+  }
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -57,21 +87,35 @@ export default function NotificationsPage() {
           ) : isError ? (
             <span className="text-xs text-red-400">Couldn't load status</span>
           ) : (
-            <StatusBadge configured={configured} />
+            <StatusBadge ok={configured} onLabel="Configured" offLabel="Not Configured" />
           )}
         </div>
 
         {!isLoading && !isError && (
-          <p className="text-gray-500 text-sm mt-2 leading-relaxed">
-            {configured
-              ? "Telegram is set up. You'll receive alerts for high-match jobs, scan results, and application updates."
-              : enabled
-              ? "TELEGRAM_ENABLED is on, but the bot token or chat ID is missing from your .env file."
-              : "Telegram notifications aren't set up yet. Add TELEGRAM_ENABLED=true, TELEGRAM_BOT_TOKEN, and TELEGRAM_CHAT_ID to your .env file to enable them — bot setup instructions are coming in a follow-up phase. Until then the app runs normally with notifications silently disabled."}
-          </p>
+          <>
+            <div className="divide-y divide-gray-800/70 mt-3">
+              <StatusRow label="Bot Status" ok={botConnected} onLabel="Connected" offLabel="Disconnected" />
+              <StatusRow label="Chat ID" ok={chatIdPresent} onLabel="Detected" offLabel="Not Configured" />
+            </div>
+
+            <p className="text-gray-500 text-sm mt-3 leading-relaxed">{explanation}</p>
+          </>
         )}
 
-        <div className="flex items-center gap-3 mt-4">
+        <div className="flex items-center gap-3 mt-4 flex-wrap">
+          <button
+            onClick={() => detectMutation.mutate()}
+            disabled={!botTokenPresent || detectMutation.isPending}
+            title={!botTokenPresent ? "Set TELEGRAM_BOT_TOKEN in .env first" : undefined}
+            className={`text-sm px-4 py-2 rounded-lg font-medium transition-colors border ${
+              !botTokenPresent
+                ? "border-gray-800 text-gray-600 cursor-not-allowed"
+                : "border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 disabled:opacity-50"
+            }`}
+          >
+            {detectMutation.isPending ? "Detecting…" : "Detect Chat ID"}
+          </button>
+
           <button
             onClick={() => testMutation.mutate()}
             disabled={!configured || testMutation.isPending}
@@ -84,15 +128,45 @@ export default function NotificationsPage() {
           >
             {testMutation.isPending ? "Sending…" : "Test Notification"}
           </button>
-          {testMutation.data && (
-            <p className={`text-sm ${testMutation.data.success ? "text-green-400" : "text-gray-500"}`}>
-              {testMutation.data.message}
-            </p>
-          )}
-          {testMutation.isError && (
-            <p className="text-red-400 text-sm">Something went wrong sending the test notification.</p>
-          )}
         </div>
+
+        {testMutation.data && (
+          <p className={`text-sm mt-2 ${testMutation.data.success ? "text-green-400" : "text-gray-500"}`}>
+            {testMutation.data.message}
+          </p>
+        )}
+        {testMutation.isError && (
+          <p className="text-red-400 text-sm mt-2">Something went wrong sending the test notification.</p>
+        )}
+
+        {detectMutation.data && (
+          <div className="mt-3">
+            <p className={`text-sm ${detectMutation.data.detected.length > 0 ? "text-gray-300" : "text-gray-500"}`}>
+              {detectMutation.data.message}
+            </p>
+            {detectMutation.data.detected.length > 0 && (
+              <ul className="mt-2 space-y-1.5">
+                {detectMutation.data.detected.map((chat) => (
+                  <li
+                    key={chat.chat_id}
+                    className="flex items-center justify-between gap-3 bg-gray-800/60 border border-gray-700 rounded px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-200 truncate">{chat.display_name}</p>
+                      <p className="text-xs text-gray-500">{chat.type}</p>
+                    </div>
+                    <code className="text-xs text-blue-300 bg-gray-900 px-2 py-1 rounded shrink-0">
+                      {chat.chat_id}
+                    </code>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {detectMutation.isError && (
+          <p className="text-red-400 text-sm mt-2">Something went wrong detecting the chat ID.</p>
+        )}
       </div>
 
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 mt-4">

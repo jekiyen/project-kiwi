@@ -117,7 +117,14 @@ def test_format_application_status_changed():
 
 def test_format_test_event():
     msg = format_message(NotificationEvent(type=NotificationEventType.TEST))
-    assert "Test Notification" in msg
+    assert "Kiwi Test" in msg
+    assert "Telegram integration successful." in msg
+
+
+def test_format_test_event_includes_timestamp_when_given():
+    msg = format_message(NotificationEvent(type=NotificationEventType.TEST, data={"timestamp": "2026-07-10 14:32:10 UTC"}))
+    assert "Current time:" in msg
+    assert "2026-07-10 14:32:10 UTC" in msg
 
 
 def test_format_escapes_html_in_user_data():
@@ -245,17 +252,53 @@ def test_config_endpoint_reports_not_configured_by_default(client, monkeypatch):
     data = r.json()
     assert data["telegram"]["enabled"] is False
     assert data["telegram"]["configured"] is False
+    assert data["telegram"]["bot_token_present"] is False
+    assert data["telegram"]["bot_connected"] is False
+    assert data["telegram"]["chat_id_present"] is False
 
 
-def test_config_endpoint_reports_configured_when_all_set(client, monkeypatch):
+def test_config_endpoint_reports_configured_when_all_set_and_bot_reachable(client, monkeypatch):
+    import telegram
     from backend.config.settings import settings
+
+    async def _fake_get_me(self, *args, **kwargs):
+        return telegram.User(id=1, first_name="Kiwi Bot", is_bot=True)
+
     monkeypatch.setattr(settings, "telegram_enabled", True)
     monkeypatch.setattr(settings, "telegram_bot_token", "some-token")
     monkeypatch.setattr(settings, "telegram_chat_id", "some-chat-id")
+    monkeypatch.setattr(telegram.Bot, "get_me", _fake_get_me)
+
     r = client.get("/api/v1/notifications/config")
     assert r.status_code == 200
     data = r.json()
     assert data["telegram"]["enabled"] is True
+    assert data["telegram"]["bot_token_present"] is True
+    assert data["telegram"]["bot_connected"] is True
+    assert data["telegram"]["chat_id_present"] is True
+    assert data["telegram"]["configured"] is True
+
+
+def test_config_endpoint_bot_connected_false_when_token_invalid(client, monkeypatch):
+    import telegram
+    from telegram.error import TelegramError
+    from backend.config.settings import settings
+
+    async def _fake_get_me(self, *args, **kwargs):
+        raise TelegramError("Unauthorized")
+
+    monkeypatch.setattr(settings, "telegram_enabled", True)
+    monkeypatch.setattr(settings, "telegram_bot_token", "bad-token")
+    monkeypatch.setattr(settings, "telegram_chat_id", "some-chat-id")
+    monkeypatch.setattr(telegram.Bot, "get_me", _fake_get_me)
+
+    r = client.get("/api/v1/notifications/config")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["telegram"]["bot_token_present"] is True
+    assert data["telegram"]["bot_connected"] is False
+    # is_configured() is a local check (enabled+token+chat_id) — stays True even
+    # though the token turns out to be bad; that's what /test and /chat-id are for.
     assert data["telegram"]["configured"] is True
 
 
@@ -272,6 +315,46 @@ def test_test_endpoint_friendly_message_when_not_configured(client, monkeypatch)
     assert data["success"] is False
     assert data["configured"] is False
     assert "TELEGRAM_ENABLED" in data["message"]
+
+
+def test_test_endpoint_missing_lists_only_actually_missing_vars(client, monkeypatch):
+    """Bot token is set but enabled/chat_id aren't — missing should name exactly those two."""
+    from backend.config.settings import settings
+    monkeypatch.setattr(settings, "telegram_enabled", False)
+    monkeypatch.setattr(settings, "telegram_bot_token", "some-token")
+    monkeypatch.setattr(settings, "telegram_chat_id", "")
+    r = client.post("/api/v1/notifications/test")
+    data = r.json()
+    assert data["missing"] == ["TELEGRAM_ENABLED", "TELEGRAM_CHAT_ID"]
+    assert "TELEGRAM_BOT_TOKEN" not in data["missing"]
+
+
+def test_test_endpoint_sends_real_message_with_timestamp_when_configured(client, monkeypatch):
+    import telegram
+    from backend.config.settings import settings
+
+    captured: dict = {}
+
+    async def _fake_send_message(self, chat_id, text, **kwargs):
+        captured["chat_id"] = chat_id
+        captured["text"] = text
+        return None
+
+    monkeypatch.setattr(settings, "telegram_enabled", True)
+    monkeypatch.setattr(settings, "telegram_bot_token", "some-token")
+    monkeypatch.setattr(settings, "telegram_chat_id", "12345")
+    monkeypatch.setattr(telegram.Bot, "send_message", _fake_send_message)
+
+    r = client.post("/api/v1/notifications/test")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["success"] is True
+    assert data["configured"] is True
+
+    assert captured["chat_id"] == "12345"
+    assert "Kiwi Test" in captured["text"]
+    assert "Telegram integration successful." in captured["text"]
+    assert "Current time:" in captured["text"]
 
 
 def test_test_endpoint_never_crashes_when_telegram_api_fails(client, monkeypatch):
@@ -294,3 +377,187 @@ def test_test_endpoint_never_crashes_when_telegram_api_fails(client, monkeypatch
     data = r.json()
     assert data["configured"] is True
     assert data["success"] is False
+
+
+# ── TelegramProvider.check_connection() ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_check_connection_true_when_get_me_succeeds(monkeypatch):
+    import telegram
+    from backend.config.settings import settings
+
+    async def _fake_get_me(self, *args, **kwargs):
+        return telegram.User(id=1, first_name="Kiwi Bot", is_bot=True)
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "some-token")
+    monkeypatch.setattr(telegram.Bot, "get_me", _fake_get_me)
+    provider = TelegramProvider()
+    assert await provider.check_connection() is True
+
+
+@pytest.mark.asyncio
+async def test_check_connection_false_when_no_token(monkeypatch):
+    from backend.config.settings import settings
+    monkeypatch.setattr(settings, "telegram_bot_token", "")
+    provider = TelegramProvider()
+    assert await provider.check_connection() is False
+
+
+@pytest.mark.asyncio
+async def test_check_connection_false_when_get_me_raises(monkeypatch):
+    import telegram
+    from telegram.error import TelegramError
+    from backend.config.settings import settings
+
+    async def _raise(self, *args, **kwargs):
+        raise TelegramError("Unauthorized")
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "bad-token")
+    monkeypatch.setattr(telegram.Bot, "get_me", _raise)
+    provider = TelegramProvider()
+    assert await provider.check_connection() is False
+
+
+# ── TelegramProvider.detect_chats() ──────────────────────────────────────────────
+
+def _make_update(update_id: int, chat_id: int, chat_type: str, **chat_kwargs):
+    import telegram
+    from datetime import datetime
+
+    chat = telegram.Chat(id=chat_id, type=chat_type, **chat_kwargs)
+    message = telegram.Message(message_id=1, date=datetime.utcnow(), chat=chat, text="hi")
+    return telegram.Update(update_id=update_id, message=message)
+
+
+@pytest.mark.asyncio
+async def test_detect_chats_returns_private_chat(monkeypatch):
+    import telegram
+    from backend.config.settings import settings
+
+    update = _make_update(1, 555, "private", username="rizky", first_name="Rizky")
+
+    async def _fake_get_updates(self, *args, **kwargs):
+        return (update,)
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "some-token")
+    monkeypatch.setattr(telegram.Bot, "get_updates", _fake_get_updates)
+
+    provider = TelegramProvider()
+    chats = await provider.detect_chats()
+    assert len(chats) == 1
+    assert chats[0].chat_id == 555
+    assert chats[0].type == "private"
+    assert chats[0].username == "rizky"
+    assert "Rizky" in chats[0].display_name
+
+
+@pytest.mark.asyncio
+async def test_detect_chats_dedupes_same_chat(monkeypatch):
+    import telegram
+    from backend.config.settings import settings
+
+    updates = (
+        _make_update(1, 555, "private", first_name="Rizky"),
+        _make_update(2, 555, "private", first_name="Rizky"),
+    )
+
+    async def _fake_get_updates(self, *args, **kwargs):
+        return updates
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "some-token")
+    monkeypatch.setattr(telegram.Bot, "get_updates", _fake_get_updates)
+
+    provider = TelegramProvider()
+    chats = await provider.detect_chats()
+    assert len(chats) == 1
+
+
+@pytest.mark.asyncio
+async def test_detect_chats_empty_when_no_updates(monkeypatch):
+    import telegram
+    from backend.config.settings import settings
+
+    async def _fake_get_updates(self, *args, **kwargs):
+        return ()
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "some-token")
+    monkeypatch.setattr(telegram.Bot, "get_updates", _fake_get_updates)
+
+    provider = TelegramProvider()
+    chats = await provider.detect_chats()
+    assert chats == []
+
+
+# ── API: GET /notifications/chat-id ──────────────────────────────────────────────
+
+def test_chat_id_endpoint_no_token(client, monkeypatch):
+    from backend.config.settings import settings
+    monkeypatch.setattr(settings, "telegram_bot_token", "")
+    r = client.get("/api/v1/notifications/chat-id")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["success"] is False
+    assert data["bot_token_present"] is False
+    assert data["detected"] == []
+    assert "TELEGRAM_BOT_TOKEN" in data["message"]
+
+
+def test_chat_id_endpoint_success(client, monkeypatch):
+    import telegram
+    from backend.config.settings import settings
+
+    update = _make_update(1, 555, "private", username="rizky", first_name="Rizky")
+
+    async def _fake_get_updates(self, *args, **kwargs):
+        return (update,)
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "some-token")
+    monkeypatch.setattr(telegram.Bot, "get_updates", _fake_get_updates)
+
+    r = client.get("/api/v1/notifications/chat-id")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["success"] is True
+    assert data["bot_token_present"] is True
+    assert len(data["detected"]) == 1
+    assert data["detected"][0]["chat_id"] == 555
+    assert data["detected"][0]["type"] == "private"
+    # Never auto-stores anything — settings.telegram_chat_id must stay untouched.
+    from backend.config.settings import settings as live_settings
+    assert live_settings.telegram_chat_id != "555"
+
+
+def test_chat_id_endpoint_no_messages_yet(client, monkeypatch):
+    import telegram
+    from backend.config.settings import settings
+
+    async def _fake_get_updates(self, *args, **kwargs):
+        return ()
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "some-token")
+    monkeypatch.setattr(telegram.Bot, "get_updates", _fake_get_updates)
+
+    r = client.get("/api/v1/notifications/chat-id")
+    data = r.json()
+    assert data["success"] is True
+    assert data["detected"] == []
+    assert "send it any" in data["message"].lower() or "message" in data["message"].lower()
+
+
+def test_chat_id_endpoint_bad_token(client, monkeypatch):
+    import telegram
+    from telegram.error import TelegramError
+    from backend.config.settings import settings
+
+    async def _raise(self, *args, **kwargs):
+        raise TelegramError("Unauthorized")
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "bad-token")
+    monkeypatch.setattr(telegram.Bot, "get_updates", _raise)
+
+    r = client.get("/api/v1/notifications/chat-id")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["success"] is False
+    assert data["bot_token_present"] is True
+    assert data["detected"] == []

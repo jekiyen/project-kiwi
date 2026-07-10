@@ -135,10 +135,13 @@ export type PatchApplicationBody = {
   cover_letter_version?: string;
 };
 
-// ── Notifications (Phase 6.2A) ──────────────────────────────────────────────────
+// ── Notifications (Phase 6.2A/B) ────────────────────────────────────────────────
 
 export interface ProviderStatus {
   enabled: boolean;
+  bot_token_present: boolean;
+  bot_connected: boolean;
+  chat_id_present: boolean;
   configured: boolean;
 }
 
@@ -149,6 +152,22 @@ export interface NotificationConfig {
 export interface TestNotificationResponse {
   success: boolean;
   configured: boolean;
+  missing: string[];
+  message: string;
+}
+
+export interface DetectedChat {
+  chat_id: number;
+  type: string;
+  username: string | null;
+  title: string | null;
+  display_name: string;
+}
+
+export interface ChatIdDetectionResponse {
+  success: boolean;
+  bot_token_present: boolean;
+  detected: DetectedChat[];
   message: string;
 }
 
@@ -162,6 +181,7 @@ export const api = {
   sendTestNotification: () =>
     request<TestNotificationResponse>("/notifications/test", { method: "POST" }),
   notificationConfig: () => request<NotificationConfig>("/notifications/config"),
+  detectChatId: () => request<ChatIdDetectionResponse>("/notifications/chat-id"),
 
   // Jobs
   jobs: (limit = 100) => request<Job[]>(`/jobs?limit=${limit}`),

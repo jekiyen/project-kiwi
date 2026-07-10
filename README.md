@@ -105,9 +105,15 @@ kiwi/
 ```bash
 # .env (copy from .env.example)
 CLAUDE_API_KEY=your_anthropic_api_key
+TELEGRAM_ENABLED=false
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_personal_chat_id
 ```
+
+Telegram notifications stay disabled until all three are set. Full
+walkthrough — creating the bot, obtaining the token, and detecting your chat
+ID from the Notifications page — in
+[docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md).
 
 ### Running the System
 
@@ -134,6 +140,7 @@ TELEGRAM_CHAT_ID=your_personal_chat_id
 | [docs/VISION.md](docs/VISION.md) | Product vision, long-term goals, success metrics |
 | [docs/PRD.md](docs/PRD.md) | Full product requirements, features, risks |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Development phases, deliverables, milestones |
+| [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | Step-by-step Telegram bot setup and notification testing |
 
 ---
 
