@@ -1,8 +1,9 @@
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlmodel import Session, select
 
 from backend.agents.scan_agent import ScanAgent
-from backend.database.models import Scan, ScanDetail, ScraperRun
+from backend.api.v1.common import MessageResponse
+from backend.database.models import Scan, ScanDetail, ScanStatus, ScraperRun
 from backend.database.queries import get_recent_scans
 from backend.database.session import get_session
 
@@ -43,8 +44,21 @@ async def list_scans(session: Session = Depends(get_session)) -> list[ScanDetail
     return result
 
 
-@router.post("/trigger")
-async def trigger_scan(background_tasks: BackgroundTasks) -> dict:
+@router.post("/trigger", response_model=MessageResponse, status_code=202)
+async def trigger_scan(
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+) -> MessageResponse:
+    """Trigger a scan. Rejected with 409 if one is already running, to avoid
+    two overlapping scans hitting the same scrapers and racing on inserts."""
+    already_running = session.exec(
+        select(Scan).where(Scan.status == ScanStatus.RUNNING)
+    ).first()
+    if already_running:
+        raise HTTPException(
+            status_code=409,
+            detail="A scan is already running — wait for it to finish before triggering another.",
+        )
     agent = ScanAgent()
     background_tasks.add_task(agent.run)
-    return {"message": "Scan triggered successfully"}
+    return MessageResponse(message="Scan triggered successfully")

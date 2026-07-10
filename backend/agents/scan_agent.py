@@ -11,6 +11,7 @@ from backend.config.settings import settings
 from backend.config.user_profile import USER_PROFILE
 from backend.core.deduplication import find_changes, is_duplicate
 from backend.core.matcher import classify_role
+from backend.core.retry import retry_async
 from backend.database.models import Job, JobChange, Scan, ScanStatus, ScraperRun
 from backend.database.queries import get_job_by_external_id
 from backend.database.session import engine
@@ -150,7 +151,12 @@ class ScanAgent(BaseAgent):
 
             try:
                 logger.info("Running scraper: %s", scraper.source_name)
-                jobs = await scraper.scrape()
+                jobs = await retry_async(
+                    scraper.scrape,
+                    retries=1,
+                    base_delay=3.0,
+                    label=f"Scraper '{scraper.source_name}'",
+                )
             except Exception as exc:
                 error_msg = str(exc)
                 logger.error("Scraper '%s' failed: %s", scraper.source_name, exc)

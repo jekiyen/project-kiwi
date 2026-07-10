@@ -136,10 +136,9 @@ async def create_application(
         applied_at=datetime.utcnow() if status == ApplicationStatus.APPLIED else None,
     )
     session.add(app)
-    session.commit()
-    session.refresh(app)
+    session.flush()  # assigns app.id without ending the transaction
     log_application_event(session, app.id, "created", to_status=app.status)
-    session.commit()
+    session.commit()  # app + its "created" event land atomically together
     session.refresh(app)
     background_tasks.add_task(
         notification_service.dispatch,

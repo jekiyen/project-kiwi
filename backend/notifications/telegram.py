@@ -3,12 +3,21 @@ from dataclasses import dataclass
 from typing import Optional
 
 from telegram import Bot
-from telegram.error import TelegramError
+from telegram.error import NetworkError, TelegramError, TimedOut
 
 from backend.config.settings import settings
+from backend.core.retry import retry_async
 from backend.notifications.base import NotificationProvider
 
 logger = logging.getLogger("telegram")
+
+
+def redact_token(text: str) -> str:
+    """Strip the bot token out of error text before it's logged or shown to the user."""
+    token = settings.telegram_bot_token
+    if token and token in text:
+        return text.replace(token, "***REDACTED***")
+    return text
 
 
 @dataclass
@@ -62,7 +71,7 @@ class TelegramProvider(NotificationProvider):
             await self._get_bot().get_me()
             return True
         except TelegramError as exc:
-            logger.warning("Telegram connection check failed: %s", exc)
+            logger.warning("Telegram connection check failed: %s", redact_token(str(exc)))
             return False
         except Exception:
             logger.exception("Unexpected error checking Telegram connection")
@@ -106,13 +115,21 @@ class TelegramProvider(NotificationProvider):
             logger.warning("Telegram not configured — skipping notification")
             return False
         try:
-            await self._get_bot().send_message(
-                chat_id=settings.telegram_chat_id,
-                text=message,
-                parse_mode="HTML",
+            await retry_async(
+                lambda: self._get_bot().send_message(
+                    chat_id=settings.telegram_chat_id,
+                    text=message,
+                    parse_mode="HTML",
+                ),
+                retries=2,
+                base_delay=1.0,
+                exceptions=(NetworkError, TimedOut),
+                label="Telegram send_message",
             )
             logger.info("Telegram notification sent: %s", message.replace("\n", " ")[:80])
             return True
         except TelegramError as exc:
-            logger.error("Telegram notification failed: %s", exc)
+            # NetworkError/TimedOut retried above; anything else (bad token, bad
+            # chat id, forbidden) is permanent — fail immediately, no retry.
+            logger.error("Telegram notification failed: %s", redact_token(str(exc)))
             return False

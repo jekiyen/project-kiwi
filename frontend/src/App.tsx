@@ -12,8 +12,10 @@ import ScanHistoryPage from "./pages/ScanHistoryPage";
 import {
   AppStatusBadge,
   ErrorBanner,
+  ErrorBoundary,
   SkeletonJobCard,
   SkeletonStatCard,
+  errorMessage as mutationErrorMessage,
   formatDate,
   formatRelativeTime,
   priorityColor,
@@ -22,6 +24,7 @@ import {
 } from "./shared";
 import ApplicationsPage from "./pages/ApplicationsPage";
 import NotificationsPage from "./pages/NotificationsPage";
+import { ToastProvider, useToast } from "./hooks/useToast";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -57,10 +60,6 @@ function sortJobs(jobs: Job[], sort: JobSort): Job[] {
     default:
       return copy;
   }
-}
-
-function mutationErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong";
 }
 
 // ── Atom components ───────────────────────────────────────────────────────────
@@ -444,6 +443,7 @@ function JobsEmptyState({ onScan, scanning }: { onScan: () => void; scanning: bo
 
 function Dashboard() {
   const qc = useQueryClient();
+  const { push } = useToast();
   const [sort, setSort] = useState<JobSort>("score_desc");
 
   const {
@@ -487,21 +487,29 @@ function Dashboard() {
 
   const scanMutation = useMutation({
     mutationFn: api.triggerScan,
-    onSuccess: () => {
+    onSuccess: (data) => {
+      push(data.message, "success");
       setTimeout(() => {
         qc.invalidateQueries({ queryKey: ["scans"] });
         qc.invalidateQueries({ queryKey: ["jobs"] });
       }, 1500);
     },
+    onError: (error) => push(`Scan failed: ${mutationErrorMessage(error)}`, "error"),
   });
 
-  const testMutation = useMutation({ mutationFn: api.sendTestNotification });
+  const testMutation = useMutation({
+    mutationFn: api.sendTestNotification,
+    onSuccess: (data) => push(data.message, data.success ? "success" : "info"),
+    onError: (error) => push(`Notification failed: ${mutationErrorMessage(error)}`, "error"),
+  });
 
   const analyseMutation = useMutation({
     mutationFn: api.analysePending,
-    onSuccess: () => {
+    onSuccess: (data) => {
+      push(data.message, "success");
       setTimeout(() => qc.invalidateQueries({ queryKey: ["jobs"] }), 1500);
     },
+    onError: (error) => push(`Scoring failed: ${mutationErrorMessage(error)}`, "error"),
   });
 
   const lastScan = scans[0] ?? null;
@@ -600,32 +608,6 @@ function Dashboard() {
         </button>
       </div>
 
-      {/* Mutation feedback */}
-      {scanMutation.isError && (
-        <p className="text-red-400 text-sm mb-3">
-          Scan failed: {mutationErrorMessage(scanMutation.error)}
-        </p>
-      )}
-      {scanMutation.data && (
-        <p className="text-green-400 text-sm mb-3">{scanMutation.data.message}</p>
-      )}
-      {analyseMutation.isError && (
-        <p className="text-red-400 text-sm mb-3">
-          Scoring failed: {mutationErrorMessage(analyseMutation.error)}
-        </p>
-      )}
-      {analyseMutation.data && (
-        <p className="text-violet-400 text-sm mb-3">{analyseMutation.data.message}</p>
-      )}
-      {testMutation.isError && (
-        <p className="text-red-400 text-sm mb-3">
-          Notification failed: {mutationErrorMessage(testMutation.error)}
-        </p>
-      )}
-      {testMutation.data && (
-        <p className="text-blue-400 text-sm mb-3">{testMutation.data.message}</p>
-      )}
-
       {/* Jobs list */}
       <section className="mb-6">
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
@@ -700,8 +682,12 @@ function AppShell() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppShell />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <AppShell />
+        </ToastProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

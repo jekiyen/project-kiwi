@@ -95,12 +95,12 @@ class ApplicationEvent(SQLModel, table=True):
 class ApplicationUpdate(SQLModel):
     """Fields that can be changed via PATCH /applications/{id}."""
     status: Optional[ApplicationStatus] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=5000)
     applied_at: Optional[datetime] = None
     interview_date: Optional[datetime] = None
     follow_up_date: Optional[datetime] = None
-    resume_version: Optional[str] = None
-    cover_letter_version: Optional[str] = None
+    resume_version: Optional[str] = Field(default=None, max_length=255)
+    cover_letter_version: Optional[str] = Field(default=None, max_length=255)
 
 
 class ApplicationWithJob(SQLModel):

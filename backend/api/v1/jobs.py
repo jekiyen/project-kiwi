@@ -1,11 +1,11 @@
 import json
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlmodel import Session, select
 
 from backend.ai import get_ai_provider
+from backend.api.v1.common import MessageResponse
 from backend.config.user_profile import USER_PROFILE
 from backend.database.models import Application, ApplicationStatus, Job
 from backend.database.queries import log_application_event
@@ -13,6 +13,33 @@ from backend.database.session import get_session
 from backend.notifications import NotificationEvent, NotificationEventType, notification_service
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+def _dispatch_application_created(background_tasks: BackgroundTasks, job: Job, app: Application) -> None:
+    background_tasks.add_task(
+        notification_service.dispatch,
+        NotificationEvent(
+            type=NotificationEventType.APPLICATION_CREATED,
+            data={"title": job.title, "employer": job.employer, "status": app.status.value},
+        ),
+    )
+
+
+def _dispatch_application_status_changed(
+    background_tasks: BackgroundTasks, job: Job, app: Application, previous_status: ApplicationStatus
+) -> None:
+    background_tasks.add_task(
+        notification_service.dispatch,
+        NotificationEvent(
+            type=NotificationEventType.APPLICATION_STATUS_CHANGED,
+            data={
+                "title": job.title,
+                "employer": job.employer,
+                "from_status": previous_status.value,
+                "to_status": app.status.value,
+            },
+        ),
+    )
 
 
 @router.get("/")
@@ -94,18 +121,11 @@ async def save_job(
         return existing
     app = Application(job_id=job_id, status=ApplicationStatus.SAVED)
     session.add(app)
-    session.commit()
-    session.refresh(app)
+    session.flush()  # assigns app.id without ending the transaction
     log_application_event(session, app.id, "created", to_status=app.status)
-    session.commit()
+    session.commit()  # app + its "created" event land atomically together
     session.refresh(app)
-    background_tasks.add_task(
-        notification_service.dispatch,
-        NotificationEvent(
-            type=NotificationEventType.APPLICATION_CREATED,
-            data={"title": job.title, "employer": job.employer, "status": app.status.value},
-        ),
-    )
+    _dispatch_application_created(background_tasks, job, app)
     return app
 
 
@@ -126,53 +146,38 @@ async def apply_to_job(
     if app is None:
         app = Application(job_id=job_id)
     previous_status = app.status
+    status_changed = previous_status != ApplicationStatus.APPLIED
     app.status = ApplicationStatus.APPLIED
     if app.applied_at is None:
         app.applied_at = datetime.utcnow()
     app.updated_at = datetime.utcnow()
     session.add(app)
-    session.commit()
-    session.refresh(app)
+    session.flush()  # assigns app.id without ending the transaction
+
     if is_new:
         log_application_event(session, app.id, "created", to_status=app.status)
-        session.commit()
-        session.refresh(app)
-        background_tasks.add_task(
-            notification_service.dispatch,
-            NotificationEvent(
-                type=NotificationEventType.APPLICATION_CREATED,
-                data={"title": job.title, "employer": job.employer, "status": app.status.value},
-            ),
-        )
-    elif previous_status != app.status:
+    elif status_changed:
         log_application_event(
             session, app.id, "status_change", from_status=previous_status, to_status=app.status
         )
-        session.commit()
-        session.refresh(app)
-        background_tasks.add_task(
-            notification_service.dispatch,
-            NotificationEvent(
-                type=NotificationEventType.APPLICATION_STATUS_CHANGED,
-                data={
-                    "title": job.title,
-                    "employer": job.employer,
-                    "from_status": previous_status.value,
-                    "to_status": app.status.value,
-                },
-            ),
-        )
+    session.commit()  # app + its event land atomically together
+    session.refresh(app)
+
+    if is_new:
+        _dispatch_application_created(background_tasks, job, app)
+    elif status_changed:
+        _dispatch_application_status_changed(background_tasks, job, app, previous_status)
     return app
 
 
-@router.post("/analyse-pending")
+@router.post("/analyse-pending", response_model=MessageResponse, status_code=202)
 async def analyse_pending(
     background_tasks: BackgroundTasks,
     force: bool = Query(False, description="Rescore jobs that have already been analysed"),
-) -> dict:
+) -> MessageResponse:
     """Queue analysis for unscored jobs. Pass ?force=true to rescore all jobs."""
     from backend.agents.scan_agent import ScanAgent
     agent = ScanAgent()
     background_tasks.add_task(agent._analyze_pending, 0, force)
     verb = "all" if force else "unscored"
-    return {"message": f"Analysis queued for {verb} jobs"}
+    return MessageResponse(message=f"Analysis queued for {verb} jobs")

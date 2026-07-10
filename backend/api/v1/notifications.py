@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter
@@ -6,8 +5,9 @@ from pydantic import BaseModel
 from telegram.error import TelegramError
 
 from backend.config.settings import settings
+from backend.core.timezone import format_local, now_local
 from backend.notifications import NotificationEvent, NotificationEventType, notification_service
-from backend.notifications.telegram import TelegramProvider
+from backend.notifications.telegram import TelegramProvider, redact_token
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -87,7 +87,7 @@ async def send_test_notification() -> TestNotificationResponse:
             ),
         )
 
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    timestamp = format_local(now_local())
     results = await notification_service.dispatch(
         NotificationEvent(type=NotificationEventType.TEST, data={"timestamp": timestamp})
     )
@@ -139,7 +139,7 @@ async def detect_chat_id() -> ChatIdDetectionResponse:
         return ChatIdDetectionResponse(
             success=False,
             bot_token_present=True,
-            message=f"Couldn't reach Telegram with this bot token — double check TELEGRAM_BOT_TOKEN. ({exc})",
+            message=f"Couldn't reach Telegram with this bot token — double check TELEGRAM_BOT_TOKEN. ({redact_token(str(exc))})",
         )
     except Exception:
         return ChatIdDetectionResponse(

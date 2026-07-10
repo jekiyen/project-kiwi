@@ -3,10 +3,20 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from backend.agents.base import BaseAgent
+from backend.core.timezone import APP_TZ
 
 logger = logging.getLogger("application")
 
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler(
+    timezone=APP_TZ,
+    job_defaults={
+        # A slow scan must finish (or be skipped) before the next interval
+        # fires again — never run two instances of the same job concurrently.
+        "max_instances": 1,
+        "coalesce": True,
+        "misfire_grace_time": 60,
+    },
+)
 
 
 def register_agent(agent: BaseAgent) -> None:

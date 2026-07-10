@@ -1,3 +1,4 @@
+import { Component, type ErrorInfo, type ReactNode } from "react";
 import type { ApplicationStatus } from "./api/client";
 
 // Backend serializes naive UTC datetimes with no timezone designator
@@ -8,9 +9,24 @@ function toUtcDate(iso: string): Date {
   return new Date(hasTimezone ? iso : `${iso}Z`);
 }
 
+// The app always displays in Asia/Jakarta (GMT+7), regardless of the
+// browser's own timezone, so timestamps read the same no matter where the
+// dashboard is opened from.
+const DISPLAY_TZ = "Asia/Jakarta";
+
 export function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  return toUtcDate(iso).toLocaleString();
+  return (
+    toUtcDate(iso).toLocaleString("en-NZ", {
+      timeZone: DISPLAY_TZ,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }) + " WIB"
+  );
 }
 
 export function formatRelativeTime(iso: string | null): string {
@@ -32,6 +48,10 @@ export function formatRelativeTime(iso: string | null): string {
   if (absDay < 7) return `${absDay}d ago`;
 
   return formatDate(iso);
+}
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Something went wrong";
 }
 
 export function sourceLabel(source: string): string {
@@ -161,4 +181,46 @@ export function ErrorBanner({
       )}
     </div>
   );
+}
+
+// ── Error boundary ────────────────────────────────────────────────────────────
+// Catches render-time crashes anywhere below it so a bug in one page can't
+// blank the entire app. Must be a class component — no hook equivalent.
+
+interface ErrorBoundaryState {
+  error: Error | null;
+}
+
+export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Unhandled render error:", error, info.componentStack);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-950 p-6">
+        <div className="max-w-md w-full bg-gray-900 border border-red-900/50 rounded-xl p-8 text-center">
+          <div className="text-4xl mb-3">⚠️</div>
+          <h1 className="text-white font-semibold text-lg">Something went wrong</h1>
+          <p className="text-gray-500 text-sm mt-2 leading-relaxed">
+            The dashboard hit an unexpected error. Reloading usually fixes it — if it keeps
+            happening, check the browser console for details.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-5 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium text-white transition-colors"
+          >
+            Reload
+          </button>
+        </div>
+      </div>
+    );
+  }
 }

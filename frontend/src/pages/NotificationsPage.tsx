@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { useToast } from "../hooks/useToast";
+import { errorMessage } from "../shared";
 
 function StatusBadge({ ok, onLabel, offLabel }: { ok: boolean; onLabel: string; offLabel: string }) {
   return (
@@ -35,6 +37,7 @@ const EVENTS = [
 
 export default function NotificationsPage() {
   const qc = useQueryClient();
+  const { push } = useToast();
 
   const { data: config, isLoading, isError } = useQuery({
     queryKey: ["notificationConfig"],
@@ -44,10 +47,12 @@ export default function NotificationsPage() {
   const testMutation = useMutation({
     mutationFn: api.sendTestNotification,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notificationConfig"] }),
+    onError: (err) => push(`Couldn't send test notification: ${errorMessage(err)}`, "error"),
   });
 
   const detectMutation = useMutation({
     mutationFn: api.detectChatId,
+    onError: (err) => push(`Couldn't detect chat ID: ${errorMessage(err)}`, "error"),
   });
 
   const telegram = config?.telegram;
@@ -135,9 +140,6 @@ export default function NotificationsPage() {
             {testMutation.data.message}
           </p>
         )}
-        {testMutation.isError && (
-          <p className="text-red-400 text-sm mt-2">Something went wrong sending the test notification.</p>
-        )}
 
         {detectMutation.data && (
           <div className="mt-3">
@@ -163,9 +165,6 @@ export default function NotificationsPage() {
               </ul>
             )}
           </div>
-        )}
-        {detectMutation.isError && (
-          <p className="text-red-400 text-sm mt-2">Something went wrong detecting the chat ID.</p>
         )}
       </div>
 

@@ -1,8 +1,20 @@
 const BASE = "/api/v1";
 
+async function extractErrorMessage(res: Response, path: string, method: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (typeof body?.message === "string") return body.message;
+  } catch {
+    // Response wasn't JSON (e.g. network layer / proxy error) — fall through.
+  }
+  return `${method} ${path} failed: ${res.status}`;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, options);
-  if (!res.ok) throw new Error(`${options?.method ?? "GET"} ${path} failed: ${res.status}`);
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, path, options?.method ?? "GET"));
+  }
   return res.json() as Promise<T>;
 }
 
@@ -213,6 +225,8 @@ export const api = {
     }),
   deleteApplication: async (id: number): Promise<void> => {
     const res = await fetch(`${BASE}/applications/${id}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(`DELETE /applications/${id} failed: ${res.status}`);
+    if (!res.ok) {
+      throw new Error(await extractErrorMessage(res, `/applications/${id}`, "DELETE"));
+    }
   },
 };

@@ -10,7 +10,14 @@ from sqlmodel import SQLModel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 # Import all models so Alembic detects them
-from backend.database.models import Application, Job, JobChange, Scan, ScraperRun  # noqa: F401, E402
+from backend.database.models import (  # noqa: F401, E402
+    Application,
+    ApplicationEvent,
+    Job,
+    JobChange,
+    Scan,
+    ScraperRun,
+)
 
 config = context.config
 

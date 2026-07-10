@@ -147,13 +147,24 @@ Development follows a phase-by-phase approach: each phase must be stable before 
 - 35 new backend tests — chat detection, bad token, missing vars, provider active/disabled, mocked Telegram API throughout (no real network calls in the suite)
 
 ### Phase 6.3 — Final Hardening
-**Status:** Pending
+**Status:** Complete
 
-- End-to-end pipeline test (scrape → analyse → dashboard → notify)
-- Error recovery and retry logic for failed scans
-- Performance review (scan duration, API call count, cost estimate)
-- README setup instructions completed and verified
-- V1 sign-off: user confirms the system is replacing manual job search
+- Global FastAPI error handlers — consistent `{error, message}` shape on every failure, tracebacks never reach the client
+- Startup config validation (`backend/config/validate.py`) — fails fast on unimplemented/misconfigured AI provider, bad scan interval, bad threshold; Telegram stays fully optional
+- Bounded retry (`backend/core/retry.py`) — Telegram sends retry transient `NetworkError`/`TimedOut` only; scraper runs get one retry on a full failure. Never infinite.
+- Request-ID middleware — every response carries `X-Request-ID`; every log line during that request is tagged with it; method/path/status/duration logged per request
+- Asia/Jakarta (GMT+7) is now the display timezone everywhere: API timestamps, log lines (`backend/core/timezone.py`), the Telegram test message, the scheduler's own clock, and the frontend's `formatDate`. Storage stays UTC.
+- Scheduler hardened: explicit `max_instances=1` / `coalesce=True` so a slow scan can't overlap itself; `POST /scans/trigger` now returns 409 if a scan is already running instead of racing scrapers against each other
+- Fixed a real bug: `migrations/env.py` was missing `ApplicationEvent`, so `alembic revision --autogenerate` would have silently dropped it
+- Fixed a real atomicity gap: application-create flows used two separate commits (app row, then its timeline event) — now a single `flush()` + one commit, so a crash between them can't leave an application with no history
+- Fixed a real bug found during verification: the test suite wasn't hermetic — a developer with real Telegram credentials in `.env` (i.e. after completing 6.2B) had every test run silently message their own Telegram chat and made the suite ~30x slower. Added `tests/conftest.py` to force Telegram off by default.
+- Fixed a real bug found during verification: the log formatter double-applied the GMT+7 offset on hosts whose system timezone was already Asia/Jakarta, showing timestamps 7 hours ahead of actual time.
+- Frontend: `ErrorBoundary` around the whole app (a render crash no longer blanks the page), a missing error state on the Applications list added, a shared toast system (`useToast`) wired into Dashboard/Applications/Notifications mutations, and API error responses now surface the backend's actual message instead of a generic status code
+- Defense-in-depth: bot token redacted from any logged/returned Telegram error text
+- 22 new backend tests (config validation, error handling/request ID, GMT+7 log formatting) — full suite: 256 passed
+- Verified live: real Telegram test notification delivered end-to-end after all changes, correct WIB timestamp
+
+**Known remaining debt (not blocking, tracked for later):** ~83 pre-existing `Optional[X]` → `X | None` style lint findings across the codebase (cosmetic, out of scope for this pass); no automated frontend component tests yet (verification here was Playwright smoke + manual); scrapers retry once at the orchestration level but don't yet have per-request retry/backoff inside each scraper.
 
 ---
 

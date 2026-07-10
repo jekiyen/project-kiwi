@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ApplicationWithJob, type ApplicationStatus, type ApplicationEvent } from "../api/client";
+import { useToast } from "../hooks/useToast";
 import {
   AppStatusBadge,
   APP_STATUS_LABELS,
   ALL_STATUSES,
+  ErrorBanner,
+  errorMessage,
   formatDate,
   formatRelativeTime,
   scoreColor,
@@ -269,6 +272,7 @@ function AppCard({ app, onPatch, onDelete, isSaving }: AppCardProps) {
 
 export default function ApplicationsPage() {
   const qc = useQueryClient();
+  const { push } = useToast();
   const [activeStatus, setActiveStatus] = useState<FilterStatus>("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -279,7 +283,13 @@ export default function ApplicationsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: apps = [], isLoading } = useQuery({
+  const {
+    data: apps = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["applications", activeStatus, debouncedSearch],
     queryFn: () =>
       api.applications({
@@ -297,11 +307,16 @@ export default function ApplicationsPage() {
       body: Parameters<typeof api.patchApplication>[1];
     }) => api.patchApplication(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["applications"] }),
+    onError: (err) => push(`Couldn't save changes: ${errorMessage(err)}`, "error"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteApplication(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["applications"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["applications"] });
+      push("Application removed", "success");
+    },
+    onError: (err) => push(`Couldn't remove application: ${errorMessage(err)}`, "error"),
   });
 
   return (
@@ -344,6 +359,12 @@ export default function ApplicationsPage() {
       {/* List */}
       {isLoading ? (
         <p className="text-gray-500 text-sm">Loading…</p>
+      ) : isError ? (
+        <ErrorBanner
+          title="Couldn't load applications"
+          message={errorMessage(error)}
+          onRetry={() => refetch()}
+        />
       ) : apps.length === 0 ? (
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
           <p className="text-gray-500 text-sm">

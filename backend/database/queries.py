@@ -2,7 +2,7 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from backend.database.models import ApplicationEvent, ApplicationStatus, Job, Scan, ScraperRun
+from backend.database.models import ApplicationEvent, ApplicationStatus, Job, Scan
 
 
 def get_job_by_external_id(session: Session, external_id: str, source: str) -> Job | None:
