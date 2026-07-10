@@ -170,31 +170,32 @@ Development follows a phase-by-phase approach: each phase must be stable before 
 
 ## Post-V1 Phases
 
-### Phase 7 — Resume Intelligence
+### Phase 7 — Resume Vault
 
 #### Phase 7.1 — Resume Library & Resume Intelligence Foundation
-**Status:** Complete
+**Status:** Superseded by Phase 7.3 (kept here as a record of what shipped and why it changed)
 
-- `Resume` model: original filename, version name, upload date, active flag, parse status, parser version, extracted text, parsed profile fields
-- PDF upload (`pypdf`) and DOCX upload (`python-docx`), files stored under server-generated UUID names — original filenames are display metadata only, never trusted for file paths
-- `RegexResumeParser` — deterministic, no AI: name, email, phone, LinkedIn, portfolio, skills, companies, job titles, education, experience (with dates and descriptions)
-- Parser is behind a `ResumeParser` interface (`backend/resume/base.py`) with a single switch point (`get_resume_parser()`) — a Phase 7.2 AI-based parser plugs in without touching the API, storage, or frontend
-- API: `GET/POST /resumes/`, `GET/PATCH/DELETE /resumes/{id}`, `POST /resumes/{id}/activate` (exactly one resume active at a time)
-- Frontend: new **Resume** sidebar page — library with upload, active/parse-status badges, rename, delete, set-active; detail panel with manual editing of every parsed field (profile fields, skills, experience entries, education entries) — no AI rewriting in this phase
-- 46 new backend tests (parser field extraction, text extraction from real generated PDF/DOCX fixtures, full upload/CRUD/activate lifecycle)
-
-**Real bugs found and fixed during verification:**
-- The block-grouping heuristic split one job entry into two whenever the date range sat on its own line, silently dropping the description. Fixed and covered by a regression test.
-- Portfolio-URL extraction matched inside the email address itself (`rizky.pratama` from `rizky.pratama@email.com`) because the URL regex doesn't know about `@`. Fixed by blanking the matched email out of the search text first.
-- **Security:** `httpx` (used internally by python-telegram-bot) logs full request URLs at INFO level — for the Telegram Bot API that URL contains the bot token in the path, leaking it straight to console/log output and bypassing the Phase 6.3 `redact_token()` defense entirely. Fixed with a `SecretRedactionFilter` applied to every log handler, plus raising `httpx`/`httpcore` to WARNING.
+- `Resume` model, PDF/DOCX upload, a deterministic `RegexResumeParser`, and a `ResumeParser` interface for a future AI-based parser
+- 46 new backend tests; two real bugs found and fixed during verification (job-entry block-grouping, portfolio-URL/email collision), plus a real Telegram-token-leak-via-httpx-logging security fix
 
 #### Phase 7.2 — AI Resume Analysis
-**Status:** Next milestone
+**Status:** Superseded by Phase 7.3 (kept here as a record of what shipped and why it changed)
 
-- AI-based `ResumeParser` implementation (higher accuracy than the regex parser, same interface)
-- Keyword gap analysis: resume vs. job description
-- Cover letter generation tailored per job description
-- User approval workflow for all AI-suggested changes
+- `AIResumeParser` — sent extracted resume text to the configured AI provider (`AIProvider.extract_json`, new method), validated the response against a strict Pydantic schema, and fell back to the regex parser on any failure so malformed data was never persisted
+- 18 new backend tests, all AI calls mocked
+
+**Why 7.1 and 7.2 were superseded:** both tried to convert resumes into structured JSON — a real parsing pipeline that shipped and worked, but the product owner reviewed it and decided it didn't fit Kiwi's actual use. Kiwi is a personal desktop tool for one user, not a SaaS product; depending on a paid AI API just to parse resumes added ongoing cost and complexity for no real benefit. The resume document itself is the source of truth — AI analysis happens manually later by attaching it directly in Claude, not through an automated extraction pipeline. See Phase 7.3.
+
+#### Phase 7.3 — Resume Vault
+**Status:** Complete
+
+- `Resume` model stripped to pure file metadata: `id`, `original_filename`, `filename` (renameable), `file_type`, `file_size`, `is_active`, `uploaded_at`, `updated_at` — no parsed data of any kind
+- Migration `006_resume_vault.py` dropped all 15 parsing-related columns, backfilled `filename` from the old `version_name` and `file_size` by reading the real file on disk — ran cleanly against the one real resume already in the database, verified byte-for-byte after migrating
+- `backend/resume/` package (regex parser, AI parser, text extraction, `ResumeParser` interface) deleted entirely — no parser abstraction needed for a vault; `extract_json` removed from `AIProvider` since it existed solely to support resume parsing
+- API: `POST /resumes/upload` now stores metadata only (no extraction), `POST /resumes/{id}/replace` swaps the file while keeping the same id/name/active status, `GET /resumes/{id}/preview` (inline) and `GET /resumes/{id}/download` (attachment, original filename) serve the stored document directly, plus the existing list/detail/rename/activate/delete
+- Frontend: Resume page rebuilt as a vault — Active Resume section + Other Resumes list, each card with Preview / Download / Replace / Set Active / Rename / Delete. Every structured-data editor (skills, experience, education, contact fields) removed.
+- 33 new backend tests covering vault CRUD, replace, preview, and download — zero parsing tests remain
+- **Future integration (explicitly out of scope for now):** a later Job Analysis workflow will use the Active Resume document together with a job description to generate a prompt for manual use in Claude — no automated extraction pipeline.
 
 ### Phase 8 — Automated Applications
 - Web form detection and auto-fill per employer site

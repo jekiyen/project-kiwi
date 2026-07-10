@@ -2,7 +2,12 @@ import json
 import logging
 import time
 
-from anthropic import APIConnectionError, APIStatusError, APITimeoutError, AsyncAnthropic
+from anthropic import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncAnthropic,
+)
 
 from backend.ai.base import AIProvider, JobAnalysis
 from backend.config.settings import settings
