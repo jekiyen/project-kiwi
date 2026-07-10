@@ -12,7 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.agents.scan_agent import ScanAgent
-from backend.api.v1 import applications, health, jobs, notifications, resumes, scans
+from backend.api.v1 import applications, health, jobs, notifications, prompts, resumes, scans
 from backend.config.settings import settings
 from backend.config.validate import validate_settings
 from backend.database.session import create_db_and_tables
@@ -131,3 +131,4 @@ app.include_router(scans.router, prefix=PREFIX)
 app.include_router(applications.router, prefix=PREFIX)
 app.include_router(notifications.router, prefix=PREFIX)
 app.include_router(resumes.router, prefix=PREFIX)
+app.include_router(prompts.router, prefix=PREFIX)

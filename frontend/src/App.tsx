@@ -6,9 +6,10 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Link, NavLink, Route, Routes } from "react-router-dom";
 import { api, type ApplicationWithJob, type Job } from "./api/client";
 import ScanHistoryPage from "./pages/ScanHistoryPage";
+import JobDetailPage from "./pages/JobDetailPage";
 import {
   AppStatusBadge,
   ErrorBanner,
@@ -247,7 +248,12 @@ function JobCard({ job, application }: JobCardProps) {
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-white font-medium leading-snug">{job.title}</h3>
+            <Link
+              to={`/jobs/${job.id}`}
+              className="text-white font-medium leading-snug hover:text-blue-400 transition-colors"
+            >
+              <h3>{job.title}</h3>
+            </Link>
             <p className="text-gray-400 text-sm mt-0.5">
               {job.employer}
               <span className="text-gray-600 mx-1">·</span>
@@ -706,6 +712,7 @@ function AppShell() {
       <main className="flex-1 ml-52 min-h-screen overflow-y-auto">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/jobs/:id" element={<JobDetailPage />} />
           <Route path="/applications" element={<ApplicationsPage />} />
           <Route path="/resume" element={<ResumePage />} />
           <Route path="/scan-history" element={<ScanHistoryPage />} />

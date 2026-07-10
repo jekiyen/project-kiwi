@@ -59,6 +59,7 @@ export interface Job {
   title: string;
   employer: string;
   location: string;
+  description: string | null;
   source: string;
   url: string;
   role_priority: "P1" | "P2" | "P3" | null;
@@ -201,6 +202,31 @@ export type PatchResumeBody = {
   filename?: string;
 };
 
+// ── AI Workspace / Prompt Engine (Phase 7.4) ────────────────────────────────
+// Kiwi never calls an AI provider directly — the Prompt Engine renders plain
+// text for the user to copy and paste into Claude by hand.
+
+export interface PromptAction {
+  id: string;
+  label: string;
+  description: string;
+  icon: string;
+}
+
+export interface GeneratedPrompt {
+  title: string;
+  content: string;
+}
+
+export interface JobChange {
+  id: number;
+  job_id: number;
+  field_changed: string;
+  old_value: string | null;
+  new_value: string | null;
+  detected_at: string;
+}
+
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -215,10 +241,17 @@ export const api = {
 
   // Jobs
   jobs: (limit = 100) => request<Job[]>(`/jobs?limit=${limit}`),
+  job: (id: number) => request<Job>(`/jobs/${id}`),
   analyseJob: (jobId: number) =>
     request<Job>(`/jobs/${jobId}/analyse`, { method: "POST" }),
   analysePending: () =>
     request<{ message: string }>("/jobs/analyse-pending", { method: "POST" }),
+
+  // AI Workspace / Prompt Engine
+  promptActions: () => request<PromptAction[]>("/prompts/actions"),
+  generateJobPrompt: (jobId: number, actionId: string) =>
+    request<GeneratedPrompt>(`/jobs/${jobId}/prompts/${actionId}`),
+  jobChanges: (jobId: number) => request<JobChange[]>(`/jobs/${jobId}/changes`),
 
   // Application tracker
   saveJob: (jobId: number) =>

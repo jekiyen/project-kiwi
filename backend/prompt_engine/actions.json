@@ -1,0 +1,44 @@
+[
+  {
+    "id": "resume_analysis",
+    "label": "Resume Analysis",
+    "description": "See how well your resume fits this specific job.",
+    "template_file": "resume_analysis.md",
+    "icon": "🔍"
+  },
+  {
+    "id": "resume_improvement",
+    "label": "Resume Improvement",
+    "description": "Get concrete edits to better match this job.",
+    "template_file": "resume_improvement.md",
+    "icon": "✏️"
+  },
+  {
+    "id": "cover_letter",
+    "label": "Cover Letter",
+    "description": "Generate a tailored cover letter for this role.",
+    "template_file": "cover_letter.md",
+    "icon": "📝"
+  },
+  {
+    "id": "interview",
+    "label": "Interview Prep",
+    "description": "Likely questions and prep guidance for this role.",
+    "template_file": "interview.md",
+    "icon": "🎤"
+  },
+  {
+    "id": "recruiter_message",
+    "label": "Recruiter Message",
+    "description": "A short outreach message for this role.",
+    "template_file": "recruiter_message.md",
+    "icon": "✉️"
+  },
+  {
+    "id": "salary_negotiation",
+    "label": "Salary Negotiation",
+    "description": "Prep talking points for a salary conversation.",
+    "template_file": "salary_negotiation.md",
+    "icon": "💰"
+  }
+]

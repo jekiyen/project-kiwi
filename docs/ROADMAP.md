@@ -197,6 +197,19 @@ Development follows a phase-by-phase approach: each phase must be stable before 
 - 33 new backend tests covering vault CRUD, replace, preview, and download — zero parsing tests remain
 - **Future integration (explicitly out of scope for now):** a later Job Analysis workflow will use the Active Resume document together with a job description to generate a prompt for manual use in Claude — no automated extraction pipeline.
 
+#### Phase 7.4 — Prompt Engine & AI Workspace
+**Status:** Complete
+
+Architectural foundation for every future AI-assisted workflow in Kiwi — not an AI feature itself. Kiwi still never calls an AI provider directly: it renders a prompt as plain text for the user to copy and paste into Claude by hand.
+
+- `backend/prompt_engine/` — `render_template()` loads a Markdown template from `backend/prompt_engine/templates/` and substitutes `{{placeholder}}` variables via regex; a missing variable renders a visible `[name not provided]` marker rather than raising. Zero prompt text lives in Python.
+- Actions are entirely configuration-driven: `registry.py` loads `backend/prompt_engine/actions.json` at import time (id, label, description, template_file, icon) — adding a new AI workflow requires only a new Markdown template + one JSON entry, no Python changes, no frontend or route changes.
+- Six initial templates: Resume Analysis, Resume Improvement, Cover Letter, Interview Prep, Recruiter Message, Salary Negotiation — each pulls job title/employer/location/description and the active Resume Vault filename into the prompt.
+- API: `GET /prompts/actions` lists the registry; `GET /jobs/{id}/prompts/{action_id}` renders a job-scoped prompt (404 on unknown job or action); `GET /jobs/{id}/changes` returns job change history, newest first.
+- New dedicated Job Detail page at `/jobs/:id` with `Description | AI Workspace | Activity` tabs, replacing the previous flat job-card-only view. The AI Workspace tab renders action tiles from the registry inside a `WorkspaceSection` wrapper designed to hold future sections (Analysis History, Saved AI Results, Visa Guidance, etc.) without reshaping the page.
+- `PromptPreviewModal` — title, scrollable rendered prompt, Copy Prompt (clipboard + toast) / Open Claude (`claude.ai/new` in a new tab) / Cancel. No automatic communication with Claude at any point.
+- 18 new backend tests (template rendering, config-driven registry loading, both new endpoints incl. 404s and missing-resume/description fallbacks) — full suite: 310 passed. Verified live with Playwright: navigated a real job to its detail page, switched all three tabs, generated a Cover Letter prompt against real job + active resume data, copied it to the clipboard (verified via `navigator.clipboard.readText()`), and confirmed the Activity tab's empty state — zero console errors throughout.
+
 ### Phase 8 — Automated Applications
 - Web form detection and auto-fill per employer site
 - Email application sending with tailored content

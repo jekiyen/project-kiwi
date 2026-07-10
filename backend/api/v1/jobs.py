@@ -2,15 +2,17 @@ import json
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from backend.ai import get_ai_provider
 from backend.api.v1.common import MessageResponse
 from backend.config.user_profile import USER_PROFILE
-from backend.database.models import Application, ApplicationStatus, Job
+from backend.database.models import Application, ApplicationStatus, Job, JobChange, Resume
 from backend.database.queries import log_application_event
 from backend.database.session import get_session
 from backend.notifications import NotificationEvent, NotificationEventType, notification_service
+from backend.prompt_engine import get_action, render_template
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -168,6 +170,51 @@ async def apply_to_job(
     elif status_changed:
         _dispatch_application_status_changed(background_tasks, job, app, previous_status)
     return app
+
+
+class GeneratedPrompt(BaseModel):
+    title: str
+    content: str
+
+
+@router.get("/{job_id}/prompts/{action_id}", response_model=GeneratedPrompt)
+async def generate_job_prompt(
+    job_id: int, action_id: str, session: Session = Depends(get_session)
+) -> GeneratedPrompt:
+    """Render a prompt for this job using the Prompt Engine. Returns plain text
+    for the user to copy and paste into Claude by hand — no AI call happens here."""
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    action = get_action(action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="Unknown AI action")
+
+    active_resume = session.exec(select(Resume).where(Resume.is_active == True)).first()  # noqa: E712
+    resume_name = active_resume.filename if active_resume else "No active resume — set one in the Resume Vault"
+
+    variables = {
+        "resume_name": resume_name,
+        "job_title": job.title,
+        "company_name": job.employer,
+        "job_description": job.description or "No description available.",
+        "job_location": job.location,
+        "employment_type": "Not specified",
+    }
+
+    content = render_template(action.template_file, variables)
+    return GeneratedPrompt(title=action.label, content=content)
+
+
+@router.get("/{job_id}/changes", response_model=list[JobChange])
+async def get_job_changes(job_id: int, session: Session = Depends(get_session)) -> list[JobChange]:
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return list(session.exec(
+        select(JobChange).where(JobChange.job_id == job_id).order_by(JobChange.detected_at.desc())
+    ).all())
 
 
 @router.post("/analyse-pending", response_model=MessageResponse, status_code=202)
