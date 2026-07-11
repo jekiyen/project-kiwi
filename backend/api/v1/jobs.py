@@ -12,6 +12,7 @@ from backend.core.ai_readiness import ReadinessStatus, evaluate_ai_readiness
 from backend.database.models import Application, ApplicationStatus, Job, JobChange, Resume
 from backend.database.queries import log_application_event
 from backend.database.session import get_session
+from backend.job_summary import JobSummary, load_job_summary, render_summary_as_text, summarize_job
 from backend.notifications import NotificationEvent, NotificationEventType, notification_service
 from backend.prompt_engine import get_action, render_template
 
@@ -84,6 +85,7 @@ async def update_job(job_id: int, body: JobUpdate, session: Session = Depends(ge
         raise HTTPException(status_code=404, detail="Job not found")
 
     changes = body.model_dump(exclude_unset=True)
+    description_changed = False
     for field_name, new_value in changes.items():
         old_value = getattr(job, field_name)
         if old_value != new_value:
@@ -93,7 +95,12 @@ async def update_job(job_id: int, body: JobUpdate, session: Session = Depends(ge
                 old_value=str(old_value) if old_value is not None else None,
                 new_value=str(new_value) if new_value is not None else None,
             ))
+            if field_name == "description":
+                description_changed = True
         setattr(job, field_name, new_value)
+
+    if description_changed:
+        summarize_job(job)  # never touches job.description itself
 
     session.add(job)
     session.commit()
@@ -119,6 +126,23 @@ async def get_job_ai_readiness(job_id: int, session: Session = Depends(get_sessi
     active_resume = session.exec(select(Resume).where(Resume.is_active == True)).first()  # noqa: E712
     readiness = evaluate_ai_readiness(job, active_resume)
     return AIReadinessResponse(status=readiness.status.value, missing=readiness.missing, impact=readiness.impact)
+
+
+@router.get("/{job_id}/summary", response_model=JobSummary)
+async def get_job_summary(job_id: int, session: Session = Depends(get_session)) -> JobSummary:
+    """The structured Kiwi Job Summary — deterministic, no LLM. Jobs created
+    before Phase 7.6 don't have one stored yet; generated and persisted here
+    on first read so every job has one going forward."""
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    had_summary = bool(job.summary_json)
+    summary = load_job_summary(job)
+    if not had_summary:
+        session.add(job)
+        session.commit()
+    return summary
 
 
 @router.post("/{job_id}/analyse")
@@ -274,7 +298,18 @@ async def generate_job_prompt(
 
     resume_name = active_resume.filename if active_resume else "No active resume — set one in the Resume Vault"
     disclaimer: str | None = None
-    if job.description:
+    had_summary = bool(job.summary_json)
+    summary = load_job_summary(job)
+    if not had_summary:
+        session.add(job)  # load_job_summary generated one on the fly — persist it
+        session.commit()
+
+    if not summary.is_empty():
+        # The Prompt Engine consumes the structured Kiwi Job Summary
+        # whenever one exists — it's what the AI Workspace itself shows the
+        # user, so the prompt matches what they saw.
+        job_description_text = render_summary_as_text(summary)
+    elif job.description:
         job_description_text = job.description
     else:
         job_description_text = _MISSING_DESCRIPTION_GUARD

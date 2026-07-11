@@ -15,6 +15,7 @@ from backend.core.retry import retry_async
 from backend.database.models import Job, JobChange, Scan, ScanStatus, ScraperRun
 from backend.database.queries import get_job_by_external_id
 from backend.database.session import engine
+from backend.job_summary import summarize_job
 from backend.notifications import NotificationEvent, NotificationEventType, notification_service
 from backend.scrapers.base import ScrapedJob
 
@@ -248,6 +249,7 @@ class ScanAgent(BaseAgent):
                     role_priority=classify_role(scraped.title, scraped.description or ""),
                     raw_data=json.dumps(scraped.raw_data) if scraped.raw_data else None,
                 )
+                summarize_job(job)
                 session.add(job)
                 new_count += 1
 

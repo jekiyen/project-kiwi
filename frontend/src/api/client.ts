@@ -82,6 +82,7 @@ export interface Job {
   visa_sponsorship_potential: boolean;
   visa_nz_rights_required: boolean;
   first_seen_at: string;
+  last_seen_at: string;
   salary_text: string | null;
 }
 
@@ -249,6 +250,22 @@ export type PatchJobBody = {
   description?: string;
 };
 
+// ── Kiwi Job Summary (Phase 7.6) ─────────────────────────────────────────────
+// Deterministic, regex/heuristic extraction — no LLM. Missing values stay
+// empty rather than being guessed.
+
+export interface JobSummary {
+  overview: string;
+  responsibilities: string[];
+  requirements_required: string[];
+  requirements_preferred: string[];
+  benefits: string[];
+  work_environment: string[];
+  salary: string;
+  visa_notes: string;
+  warnings: string[];
+}
+
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -270,6 +287,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+  jobSummary: (jobId: number) => request<JobSummary>(`/jobs/${jobId}/summary`),
   analyseJob: (jobId: number) =>
     request<Job>(`/jobs/${jobId}/analyse`, { method: "POST" }),
   analysePending: () =>

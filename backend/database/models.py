@@ -63,6 +63,10 @@ class Job(SQLModel, table=True):
     last_seen_at: datetime  = Field(default_factory=datetime.utcnow)
     is_active: bool = True
     raw_data: Optional[str] = None
+    # Kiwi Job Summary (Phase 7.6) — deterministic structured breakdown of
+    # `description`, JSON-encoded (backend.job_summary.JobSummary). Never
+    # overwrites description; regenerated whenever it changes.
+    summary_json: Optional[str] = None
 
 
 class Application(SQLModel, table=True):
