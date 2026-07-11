@@ -210,6 +210,17 @@ Architectural foundation for every future AI-assisted workflow in Kiwi — not a
 - `PromptPreviewModal` — title, scrollable rendered prompt, Copy Prompt (clipboard + toast) / Open Claude (`claude.ai/new` in a new tab) / Cancel. No automatic communication with Claude at any point.
 - 18 new backend tests (template rendering, config-driven registry loading, both new endpoints incl. 404s and missing-resume/description fallbacks) — full suite: 310 passed. Verified live with Playwright: navigated a real job to its detail page, switched all three tabs, generated a Cover Letter prompt against real job + active resume data, copied it to the clipboard (verified via `navigator.clipboard.readText()`), and confirmed the Activity tab's empty state — zero console errors throughout.
 
+#### Phase 7.5 — AI Readiness & Job Quality
+**Status:** Complete
+
+Stops the AI Workspace from silently generating a low-quality prompt from incomplete job data — the system now says why confidence is limited instead of guessing anyway.
+
+- `backend/core/ai_readiness.py` — single `evaluate_ai_readiness(job, active_resume)` evaluator used by both the readiness card endpoint and the Prompt Guard, so they can never disagree. Hard requirements (Job Title, Company, Active Resume) missing → `not_ready` (generation blocked entirely); only Job Description missing → `partial` (generation allowed with a disclaimer); everything present → `ready`.
+- API: `GET /jobs/{id}/ai-readiness` (status/missing/impact) and `PATCH /jobs/{id}` (Edit Job fast path — title/employer/location/description; logs a `JobChange` row per changed field so manual edits show up in the Activity tab for free).
+- Prompt Guard lives inside `GET /jobs/{id}/prompts/{action_id}`: returns 409 without generating anything when Not Ready; when Partial, injects an explicit anti-hallucination instruction into the rendered prompt text itself ("do not invent or assume... clearly note limited confidence") plus a separate `disclaimer` field for the UI — the guardrail travels with the copied prompt, not just the screen.
+- Frontend: an `AIReadinessCard` at the top of the AI Workspace tab (status badge, missing list, impact sentence, Edit Job / Go to Resume Vault actions) drives an inline edit form — no modal, no leaving the tab — and gates the action tiles (`disabled` when Not Ready). `PromptPreviewModal` shows a yellow disclaimer banner when the generated prompt is Partial.
+- 19 new backend tests (evaluator rules incl. priority of Not Ready over Partial, both endpoints, Prompt Guard 409/disclaimer paths, PATCH incl. JobChange logging and no-op-when-unchanged) — full suite: 329 passed. Verified live with Playwright against real job data: confirmed action tiles are actually disabled (not just styled) when Not Ready, used the inline Edit Job form to fix a missing field and watched the card transition Not Ready → Partial in place, generated a prompt in each of the three states and confirmed the disclaimer banner and embedded guardrail text appear only when Partial — zero console errors throughout.
+
 ### Phase 8 — Automated Applications
 - Web form detection and auto-fill per employer site
 - Email application sending with tailored content

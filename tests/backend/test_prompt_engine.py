@@ -147,16 +147,12 @@ def test_list_prompt_actions(client):
 
 # ── API: GET /jobs/{job_id}/prompts/{action_id} ─────────────────────────────
 
-def test_generate_job_prompt_without_active_resume(client, seeded_job):
+def test_generate_job_prompt_without_active_resume_is_blocked_by_prompt_guard(client, seeded_job):
+    # Phase 7.5: the Prompt Guard blocks generation outright when AI Readiness
+    # is Not Ready (no active resume) — see tests/backend/test_ai_readiness.py
+    # for full readiness/guard coverage.
     r = client.get(f"/api/v1/jobs/{seeded_job}/prompts/cover_letter")
-    assert r.status_code == 200
-    data = r.json()
-    assert data["title"] == "Cover Letter"
-    assert "Packhouse Worker" in data["content"]
-    assert "Test Co" in data["content"]
-    assert "Auckland" in data["content"]
-    assert "Pack fruit at a busy packhouse." in data["content"]
-    assert "No active resume" in data["content"]
+    assert r.status_code == 409
 
 
 def test_generate_job_prompt_with_active_resume(client, _override_db, seeded_job):
@@ -198,13 +194,25 @@ def test_generate_job_prompt_missing_description_falls_back(client, _override_db
             url="https://seek.co.nz/job/2",
         )
         s.add(job)
+        resume = Resume(
+            original_filename="cv.pdf",
+            stored_filename="uuid-cv-2.pdf",
+            filename="My Resume.pdf",
+            file_type="pdf",
+            file_size=1234,
+            is_active=True,
+        )
+        s.add(resume)
         s.commit()
         s.refresh(job)
         job_id = job.id
 
     r = client.get(f"/api/v1/jobs/{job_id}/prompts/interview")
     assert r.status_code == 200
-    assert "No description available." in r.json()["content"]
+    data = r.json()
+    assert data["readiness_status"] == "partial"
+    assert data["disclaimer"] is not None
+    assert "do not invent or assume" in data["content"].lower()
 
 
 # ── API: GET /jobs/{job_id}/changes ─────────────────────────────────────────

@@ -213,9 +213,13 @@ export interface PromptAction {
   icon: string;
 }
 
+export type AIReadinessStatus = "ready" | "partial" | "not_ready";
+
 export interface GeneratedPrompt {
   title: string;
   content: string;
+  readiness_status: AIReadinessStatus;
+  disclaimer: string | null;
 }
 
 export interface JobChange {
@@ -226,6 +230,24 @@ export interface JobChange {
   new_value: string | null;
   detected_at: string;
 }
+
+// ── AI Readiness & Job Quality (Phase 7.5) ──────────────────────────────────
+// Prevents generating a low-quality prompt from incomplete job data — see
+// backend/core/ai_readiness.py for the single evaluator both the readiness
+// card and the Prompt Guard rely on.
+
+export interface AIReadiness {
+  status: AIReadinessStatus;
+  missing: string[];
+  impact: string;
+}
+
+export type PatchJobBody = {
+  title?: string;
+  employer?: string;
+  location?: string;
+  description?: string;
+};
 
 // ── API object ────────────────────────────────────────────────────────────────
 
@@ -242,6 +264,12 @@ export const api = {
   // Jobs
   jobs: (limit = 100) => request<Job[]>(`/jobs?limit=${limit}`),
   job: (id: number) => request<Job>(`/jobs/${id}`),
+  patchJob: (id: number, body: PatchJobBody) =>
+    request<Job>(`/jobs/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   analyseJob: (jobId: number) =>
     request<Job>(`/jobs/${jobId}/analyse`, { method: "POST" }),
   analysePending: () =>
@@ -252,6 +280,7 @@ export const api = {
   generateJobPrompt: (jobId: number, actionId: string) =>
     request<GeneratedPrompt>(`/jobs/${jobId}/prompts/${actionId}`),
   jobChanges: (jobId: number) => request<JobChange[]>(`/jobs/${jobId}/changes`),
+  aiReadiness: (jobId: number) => request<AIReadiness>(`/jobs/${jobId}/ai-readiness`),
 
   // Application tracker
   saveJob: (jobId: number) =>

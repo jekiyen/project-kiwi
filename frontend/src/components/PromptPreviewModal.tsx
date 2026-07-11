@@ -6,13 +6,15 @@ const CLAUDE_NEW_CHAT_URL = "https://claude.ai/new";
 interface PromptPreviewModalProps {
   title: string;
   content: string;
+  disclaimer?: string | null;
   onClose: () => void;
 }
 
 // Displays a rendered prompt for the user to copy and paste into Claude by
 // hand. Kiwi never talks to an AI provider directly — see docs/ROADMAP.md
-// Phase 7.4.
-export default function PromptPreviewModal({ title, content, onClose }: PromptPreviewModalProps) {
+// Phase 7.4. The optional disclaimer (Phase 7.5 — AI Readiness) surfaces
+// when the prompt was generated with incomplete job data.
+export default function PromptPreviewModal({ title, content, disclaimer, onClose }: PromptPreviewModalProps) {
   const { push } = useToast();
   const [copied, setCopied] = useState(false);
 
@@ -60,6 +62,12 @@ export default function PromptPreviewModal({ title, content, onClose }: PromptPr
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {disclaimer && (
+            <div className="flex items-start gap-2 bg-yellow-950/30 border border-yellow-900/50 rounded-lg px-3 py-2 mb-4">
+              <span className="text-yellow-500 text-sm leading-none mt-0.5">⚠</span>
+              <p className="text-yellow-200/90 text-xs leading-relaxed">{disclaimer}</p>
+            </div>
+          )}
           <pre className="whitespace-pre-wrap break-words text-sm text-gray-300 font-sans leading-relaxed">
             {content}
           </pre>
