@@ -266,6 +266,56 @@ export interface JobSummary {
   warnings: string[];
 }
 
+// ── Application Profile (Phase 8.0) ─────────────────────────────────────────
+// Single source of truth for reusable applicant information — the
+// foundation future ATS autofill will read from. Exactly one profile ever
+// exists on the backend; GET/PUT upsert it. Resume data is never duplicated
+// here — it always comes from the Resume Vault.
+
+export interface ApplicationReference {
+  id: number;
+  name: string;
+  company: string | null;
+  relationship: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+export type ApplicationReferenceInput = Omit<ApplicationReference, "id">;
+
+export interface ApplicationProfile {
+  id: number;
+  full_name: string | null;
+  preferred_name: string | null;
+  email: string | null;
+  phone: string | null;
+  current_address: string | null;
+  city: string | null;
+  country: string | null;
+  nationality: string | null;
+  work_rights_current_country: string | null;
+  visa_status: string | null;
+  eligible_to_work_nz: boolean;
+  need_sponsorship: boolean;
+  driver_license: boolean;
+  own_vehicle: boolean;
+  linkedin_url: string | null;
+  portfolio_url: string | null;
+  github_url: string | null;
+  website_url: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_relationship: string | null;
+  emergency_contact_phone: string | null;
+  notes: string | null;
+  references: ApplicationReference[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type ApplicationProfileUpdate = Omit<ApplicationProfile, "id" | "created_at" | "updated_at" | "references"> & {
+  references: ApplicationReferenceInput[];
+};
+
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -366,4 +416,13 @@ export const api = {
   },
   resumePreviewUrl: (id: number) => `${BASE}/resumes/${id}/preview`,
   resumeDownloadUrl: (id: number) => `${BASE}/resumes/${id}/download`,
+
+  // Application Profile
+  applicationProfile: () => request<ApplicationProfile>("/application-profile/"),
+  updateApplicationProfile: (body: ApplicationProfileUpdate) =>
+    request<ApplicationProfile>("/application-profile/", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
 };

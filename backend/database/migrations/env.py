@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirna
 from backend.database.models import (  # noqa: F401, E402
     Application,
     ApplicationEvent,
+    ApplicationProfile,
+    ApplicationReference,
     Job,
     JobChange,
     Resume,

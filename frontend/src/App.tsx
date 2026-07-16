@@ -24,6 +24,7 @@ import {
   sourceLabel,
 } from "./shared";
 import ApplicationsPage from "./pages/ApplicationsPage";
+import ApplicationProfilePage from "./pages/ApplicationProfilePage";
 import NotificationsPage from "./pages/NotificationsPage";
 import ResumePage from "./pages/ResumePage";
 import { ToastProvider, useToast } from "./hooks/useToast";
@@ -434,6 +435,15 @@ function Sidebar() {
           Resume
         </NavLink>
         <NavLink
+          to="/application-profile"
+          className={({ isActive }) =>
+            `${navLink} ${isActive ? activeClass : inactiveClass}`
+          }
+        >
+          <span>🧾</span>
+          Application Profile
+        </NavLink>
+        <NavLink
           to="/scan-history"
           className={({ isActive }) =>
             `${navLink} ${isActive ? activeClass : inactiveClass}`
@@ -715,6 +725,7 @@ function AppShell() {
           <Route path="/jobs/:id" element={<JobDetailPage />} />
           <Route path="/applications" element={<ApplicationsPage />} />
           <Route path="/resume" element={<ResumePage />} />
+          <Route path="/application-profile" element={<ApplicationProfilePage />} />
           <Route path="/scan-history" element={<ScanHistoryPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
         </Routes>

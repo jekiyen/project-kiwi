@@ -234,3 +234,132 @@ class ResumeResponse(SQLModel):
     is_active: bool
     uploaded_at: datetime
     updated_at: datetime
+
+
+# ── Application Profile (Phase 8.0) ──────────────────────────────────────────
+# Single source of truth for reusable applicant information — the foundation
+# future ATS autofill will read from. Exactly one row ever exists; the API
+# upserts it rather than exposing multiple records. Resume data is never
+# duplicated here — the Resume Vault remains the source of truth for that.
+
+class ApplicationProfile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    # Personal Information
+    full_name: Optional[str] = None
+    preferred_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    current_address: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    nationality: Optional[str] = None
+    # Work Rights
+    work_rights_current_country: Optional[str] = None
+    visa_status: Optional[str] = None
+    eligible_to_work_nz: bool = False
+    need_sponsorship: bool = False
+    driver_license: bool = False
+    own_vehicle: bool = False
+    # Professional Links
+    linkedin_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+    github_url: Optional[str] = None
+    website_url: Optional[str] = None
+    # Emergency Contact
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_relationship: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    # Notes
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ApplicationReference(SQLModel, table=True):
+    """A reference entry belonging to the single ApplicationProfile. Replaced
+    wholesale on every PUT /application-profile — no separate CRUD routes."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    profile_id: int = Field(foreign_key="applicationprofile.id", index=True)
+    name: str
+    company: Optional[str] = None
+    relationship: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+# ── Request / response models (not DB tables) ────────────────────────────────
+
+class ApplicationReferenceInput(SQLModel):
+    name: str = Field(max_length=255)
+    company: Optional[str] = Field(default=None, max_length=255)
+    relationship: Optional[str] = Field(default=None, max_length=255)
+    email: Optional[str] = Field(default=None, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=50)
+
+
+class ApplicationReferenceOut(ApplicationReferenceInput):
+    id: int
+
+
+class ApplicationProfileUpdate(SQLModel):
+    """Full replace body for PUT /application-profile — every field is
+    optional so the profile can be filled in progressively, and `references`
+    always fully replaces the existing reference list."""
+    # Personal Information
+    full_name: Optional[str] = Field(default=None, max_length=255)
+    preferred_name: Optional[str] = Field(default=None, max_length=255)
+    email: Optional[str] = Field(default=None, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=50)
+    current_address: Optional[str] = Field(default=None, max_length=500)
+    city: Optional[str] = Field(default=None, max_length=255)
+    country: Optional[str] = Field(default=None, max_length=255)
+    nationality: Optional[str] = Field(default=None, max_length=255)
+    # Work Rights
+    work_rights_current_country: Optional[str] = Field(default=None, max_length=255)
+    visa_status: Optional[str] = Field(default=None, max_length=255)
+    eligible_to_work_nz: bool = False
+    need_sponsorship: bool = False
+    driver_license: bool = False
+    own_vehicle: bool = False
+    # Professional Links
+    linkedin_url: Optional[str] = Field(default=None, max_length=500)
+    portfolio_url: Optional[str] = Field(default=None, max_length=500)
+    github_url: Optional[str] = Field(default=None, max_length=500)
+    website_url: Optional[str] = Field(default=None, max_length=500)
+    # Emergency Contact
+    emergency_contact_name: Optional[str] = Field(default=None, max_length=255)
+    emergency_contact_relationship: Optional[str] = Field(default=None, max_length=255)
+    emergency_contact_phone: Optional[str] = Field(default=None, max_length=50)
+    # Notes
+    notes: Optional[str] = Field(default=None, max_length=5000)
+    # References — full replace
+    references: list[ApplicationReferenceInput] = []
+
+
+class ApplicationProfileResponse(SQLModel):
+    id: int
+    full_name: Optional[str]
+    preferred_name: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    current_address: Optional[str]
+    city: Optional[str]
+    country: Optional[str]
+    nationality: Optional[str]
+    work_rights_current_country: Optional[str]
+    visa_status: Optional[str]
+    eligible_to_work_nz: bool
+    need_sponsorship: bool
+    driver_license: bool
+    own_vehicle: bool
+    linkedin_url: Optional[str]
+    portfolio_url: Optional[str]
+    github_url: Optional[str]
+    website_url: Optional[str]
+    emergency_contact_name: Optional[str]
+    emergency_contact_relationship: Optional[str]
+    emergency_contact_phone: Optional[str]
+    notes: Optional[str]
+    references: list[ApplicationReferenceOut]
+    created_at: datetime
+    updated_at: datetime
