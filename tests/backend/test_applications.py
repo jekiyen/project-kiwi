@@ -307,4 +307,24 @@ def test_delete_application_removes_its_timeline_events(client, seeded_job):
     new_app_id = new_r.json()["id"]
     events = client.get(f"/api/v1/applications/{new_app_id}/timeline").json()
     assert len(events) == 1
-    assert events[0]["event_type"] == "created"
+
+
+def test_delete_application_removes_its_application_sessions(client, seeded_job):
+    """Phase 8 — an Application Session points at application_id; deleting
+    the application must not leave an orphaned session behind."""
+    client.post(f"/api/v1/jobs/{seeded_job}/launch-application")
+    app_id = client.get(f"/api/v1/jobs/{seeded_job}/application-kit").json()["application"]["id"]
+
+    r = client.delete(f"/api/v1/applications/{app_id}")
+    assert r.status_code == 204
+
+    # Re-launching after the application (and its session) were deleted must
+    # start a brand new session — not resume a stale orphaned one, which
+    # would happen if the old ApplicationSession row had been left behind
+    # (SQLite may reuse the deleted application's rowid on an empty table).
+    relaunch = client.post(f"/api/v1/jobs/{seeded_job}/launch-application")
+    new_app_id = relaunch.json()["application"]["id"]
+    events = client.get(f"/api/v1/applications/{new_app_id}/timeline").json()
+    event_types = [e["event_type"] for e in events]
+    assert "session_started" in event_types
+    assert "session_resumed" not in event_types

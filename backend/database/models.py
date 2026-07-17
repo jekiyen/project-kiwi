@@ -67,6 +67,12 @@ class Job(SQLModel, table=True):
     # `description`, JSON-encoded (backend.job_summary.JobSummary). Never
     # overwrites description; regenerated whenever it changes.
     summary_json: Optional[str] = None
+    # Application Copilot (Phase 8) — stamped whenever the Cover Letter
+    # prompt is generated for this job via the Prompt Engine. Kiwi never
+    # stores the AI's actual output (it's pasted into Claude by hand), so
+    # this timestamp is the only signal the Readiness Engine can use for
+    # "has a cover letter been prepared for this job."
+    cover_letter_generated_at: Optional[datetime] = None
 
 
 class Application(SQLModel, table=True):
@@ -84,14 +90,55 @@ class Application(SQLModel, table=True):
 
 
 class ApplicationEvent(SQLModel, table=True):
-    """Timeline/history entry recording a lifecycle event for an application."""
+    """Timeline/history entry recording a lifecycle event for an application.
+
+    event_type values: "created" | "status_change" | "note_updated" |
+    "session_started" | "session_resumed" | "session_completed" |
+    "session_cancelled" (Phase 8 — Application Session lifecycle)."""
     id: Optional[int] = Field(default=None, primary_key=True)
     application_id: int = Field(foreign_key="application.id", index=True)
-    event_type: str  # "created" | "status_change" | "note_updated"
+    event_type: str
     from_status: Optional[ApplicationStatus] = None
     to_status: Optional[ApplicationStatus] = None
     detail: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ApplicationSessionStatus(str, Enum):
+    STARTED   = "started"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class ApplicationSession(SQLModel, table=True):
+    """Application Copilot (Phase 8) — tracks a single "Launch Application"
+    attempt. Kiwi only ever opens the employer's job URL in a new tab; it
+    never submits anything. This is purely a record of when the user went to
+    go apply and what they told Kiwi happened when they came back."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    application_id: int = Field(foreign_key="application.id", index=True)
+    status: ApplicationSessionStatus = ApplicationSessionStatus.STARTED
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    last_opened_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
+    # Snapshots of what was used at launch time — never a copy of the actual
+    # documents/data, just a human-readable marker of "what version was this."
+    resume_version: Optional[str] = None
+    cover_letter_version: Optional[str] = None
+    profile_version: Optional[str] = None
+
+
+class ApplicationSessionResponse(SQLModel):
+    id: int
+    application_id: int
+    status: ApplicationSessionStatus
+    started_at: datetime
+    last_opened_at: datetime
+    completed_at: Optional[datetime]
+    duration_seconds: int
+    resume_version: Optional[str]
+    cover_letter_version: Optional[str]
+    profile_version: Optional[str]
 
 
 # ── Request / response models (not DB tables) ─────────────────────────────────
@@ -131,6 +178,10 @@ class ApplicationWithJob(SQLModel):
     job_role_priority: Optional[str]
     job_ai_priority: Optional[str]
     job_salary_text: Optional[str]
+    # Phase 8 — set when a not-yet-terminal (STARTED) ApplicationSession
+    # exists for this application, so the Dashboard can show "Preparing"
+    # instead of "Saved" without a second round trip per job.
+    active_session_status: Optional[str] = None
 
 
 class PipelineCounts(SQLModel):
@@ -363,3 +414,45 @@ class ApplicationProfileResponse(SQLModel):
     references: list[ApplicationReferenceOut]
     created_at: datetime
     updated_at: datetime
+
+
+# ── Application Copilot (Phase 8) ────────────────────────────────────────────
+# Response shapes for the Application Readiness Engine and the Application
+# Kit — see backend/core/application_readiness.py for the actual rules.
+
+class SectionReadinessOut(SQLModel):
+    resume: bool
+    application_profile: bool
+    cover_letter: bool
+    references: bool
+    work_rights: bool
+
+
+class ApplicationReadinessResponse(SQLModel):
+    status: str
+    sections: SectionReadinessOut
+    missing: list[str]
+    score: int
+    estimated_minutes: int
+
+
+class ApplicationKitResponse(SQLModel):
+    """Everything the Application Kit UI needs for one job, in one call."""
+    readiness: ApplicationReadinessResponse
+    application: Optional[Application]
+    active_session: Optional[ApplicationSessionResponse]
+
+
+class LaunchApplicationResponse(SQLModel):
+    url: str
+    application: Application
+    session: ApplicationSessionResponse
+
+
+class CompleteSessionRequest(SQLModel):
+    outcome: str  # "applied" | "not_yet" | "cancelled"
+
+
+class CompleteSessionResponse(SQLModel):
+    application: Application
+    session: ApplicationSessionResponse

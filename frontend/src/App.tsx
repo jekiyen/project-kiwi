@@ -7,15 +7,16 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Link, NavLink, Route, Routes } from "react-router-dom";
-import { api, type ApplicationWithJob, type Job } from "./api/client";
+import { api, type ApplicationReadinessStatus, type ApplicationWithJob, type Job } from "./api/client";
 import ScanHistoryPage from "./pages/ScanHistoryPage";
 import JobDetailPage from "./pages/JobDetailPage";
 import {
-  AppStatusBadge,
   ErrorBanner,
   ErrorBoundary,
   SkeletonJobCard,
   SkeletonStatCard,
+  WorkflowBadge,
+  computeWorkflowState,
   errorMessage as mutationErrorMessage,
   formatDate,
   formatRelativeTime,
@@ -203,9 +204,10 @@ function RelativeTime({
 interface JobCardProps {
   job: Job;
   application?: ApplicationWithJob;
+  readinessStatus?: ApplicationReadinessStatus;
 }
 
-function JobCard({ job, application }: JobCardProps) {
+function JobCard({ job, application, readinessStatus }: JobCardProps) {
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
 
@@ -219,15 +221,14 @@ function JobCard({ job, application }: JobCardProps) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["applications"] }),
   });
 
-  const applyMutation = useMutation({
-    mutationFn: () => api.applyJob(job.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["applications"] }),
-  });
-
   const score = job.ai_match_score;
   const isSaved = !!application;
-  const canApply = !application || application.status === "saved";
   const explanationLong = (job.ai_explanation?.length ?? 0) > 160;
+  const workflowState = computeWorkflowState(
+    application?.status,
+    application?.active_session_status === "started",
+    readinessStatus,
+  );
 
   return (
     <article className="group bg-gray-900 border border-gray-800 rounded-xl p-4 flex gap-4 transition-colors hover:border-gray-700 hover:bg-gray-900/80">
@@ -269,7 +270,7 @@ function JobCard({ job, application }: JobCardProps) {
           </div>
 
           <div className="flex-none flex items-center flex-wrap justify-end gap-1.5 max-w-[45%]">
-            {application && <AppStatusBadge status={application.status} />}
+            <WorkflowBadge state={workflowState} />
             {job.ai_priority && job.ai_priority !== "Reject" && (
               <span
                 className={`text-xs px-2 py-0.5 rounded font-medium ${priorityColor(job.ai_priority)}`}
@@ -319,17 +320,12 @@ function JobCard({ job, application }: JobCardProps) {
         {/* Footer: actions + timestamps */}
         <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
           <div className="flex items-center flex-wrap gap-2">
-            <button
-              onClick={() => applyMutation.mutate()}
-              disabled={!canApply || applyMutation.isPending}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                !canApply
-                  ? "bg-blue-900/20 text-blue-400/40 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
-              }`}
+            <Link
+              to={`/jobs/${job.id}?tab=apply`}
+              className="text-xs px-3 py-1.5 rounded-lg font-medium bg-blue-600 hover:bg-blue-500 text-white transition-colors"
             >
-              {applyMutation.isPending ? "Applying…" : !canApply ? "Applied ✓" : "Apply"}
-            </button>
+              {application ? "View Application" : "Start Application"}
+            </Link>
 
             <button
               onClick={() => saveMutation.mutate()}
@@ -371,11 +367,9 @@ function JobCard({ job, application }: JobCardProps) {
           </div>
         </div>
 
-        {(saveMutation.isError || applyMutation.isError || analyseMutation.isError) && (
+        {(saveMutation.isError || analyseMutation.isError) && (
           <p className="text-red-400 text-xs mt-2">
-            {mutationErrorMessage(
-              saveMutation.error ?? applyMutation.error ?? analyseMutation.error,
-            )}
+            {mutationErrorMessage(saveMutation.error ?? analyseMutation.error)}
           </p>
         )}
       </div>
@@ -518,6 +512,11 @@ function Dashboard() {
   const { data: apps = [], isLoading: appsLoading } = useQuery({
     queryKey: ["applications"],
     queryFn: () => api.applications(),
+  });
+
+  const { data: readinessSummary = {} } = useQuery({
+    queryKey: ["readinessSummary"],
+    queryFn: api.readinessSummary,
   });
 
   const appsByJobId = useMemo(() => {
@@ -703,7 +702,12 @@ function Dashboard() {
         ) : (
           <div className="flex flex-col gap-3">
             {sortedJobs.map((job) => (
-              <JobCard key={job.id} job={job} application={appsByJobId.get(job.id)} />
+              <JobCard
+                key={job.id}
+                job={job}
+                application={appsByJobId.get(job.id)}
+                readinessStatus={readinessSummary[job.id]}
+              />
             ))}
           </div>
         )}

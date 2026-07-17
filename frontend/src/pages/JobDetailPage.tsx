@@ -1,20 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
-import { api, type Job, type JobChange, type JobSummary } from "../api/client";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { api, type ApplicationEvent, type Job, type JobChange, type JobSummary } from "../api/client";
 import AIWorkspace from "../components/AIWorkspace";
+import ApplicationKit from "../components/ApplicationKit";
 import { useToast } from "../hooks/useToast";
 import { ErrorBanner, errorMessage, formatDate, formatRelativeTime, scoreColor, sourceLabel } from "../shared";
 
-type Tab = "overview" | "ai_summary" | "original" | "workspace" | "activity";
+type Tab = "overview" | "ai_summary" | "original" | "workspace" | "apply" | "activity";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "ai_summary", label: "AI Summary" },
   { id: "original", label: "Original Description" },
   { id: "workspace", label: "AI Workspace" },
+  { id: "apply", label: "Apply" },
   { id: "activity", label: "Activity" },
 ];
+
+const VALID_TABS = new Set<Tab>(TABS.map((t) => t.id));
 
 const ORIGINAL_DESCRIPTION_COLLAPSE_THRESHOLD = 600;
 
@@ -283,9 +287,17 @@ type TimelineEntry =
   | { kind: "discovered"; at: string }
   | { kind: "rescanned"; at: string }
   | { kind: "analysed"; at: string; score: number | null }
-  | { kind: "change"; at: string; change: JobChange };
+  | { kind: "change"; at: string; change: JobChange }
+  | { kind: "session"; at: string; event: ApplicationEvent };
 
-function buildTimeline(job: Job, changes: JobChange[]): TimelineEntry[] {
+const SESSION_EVENT_LABELS: Record<string, { icon: string; title: string }> = {
+  session_started: { icon: "🚀", title: "Application started" },
+  session_resumed: { icon: "▶️", title: "Application resumed" },
+  session_completed: { icon: "✅", title: "Application completed" },
+  session_cancelled: { icon: "✖️", title: "Application cancelled" },
+};
+
+function buildTimeline(job: Job, changes: JobChange[], events: ApplicationEvent[]): TimelineEntry[] {
   const entries: TimelineEntry[] = [{ kind: "discovered", at: job.first_seen_at }];
 
   if (job.ai_analysed_at) {
@@ -298,6 +310,12 @@ function buildTimeline(job: Job, changes: JobChange[]): TimelineEntry[] {
 
   for (const change of changes) {
     entries.push({ kind: "change", at: change.detected_at, change });
+  }
+
+  for (const event of events) {
+    if (event.event_type in SESSION_EVENT_LABELS) {
+      entries.push({ kind: "session", at: event.created_at, event });
+    }
   }
 
   return entries.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
@@ -329,6 +347,13 @@ function TimelineRow({ entry }: { entry: TimelineEntry }) {
       detail = `${entry.change.old_value ?? "—"} → ${entry.change.new_value ?? "—"}`;
       break;
     }
+    case "session": {
+      const cfg = SESSION_EVENT_LABELS[entry.event.event_type];
+      icon = cfg.icon;
+      title = cfg.title;
+      detail = entry.event.detail;
+      break;
+    }
   }
 
   return (
@@ -358,6 +383,20 @@ function ActivityTab({ job }: { job: Job }) {
     queryFn: () => api.jobChanges(job.id),
   });
 
+  // Application Session lifecycle events (Phase 8) — merged in only when an
+  // Application record exists for this job yet.
+  const { data: kit } = useQuery({
+    queryKey: ["applicationKit", job.id],
+    queryFn: () => api.applicationKit(job.id),
+  });
+  const applicationId = kit?.application?.id;
+
+  const { data: events = [] } = useQuery({
+    queryKey: ["applicationTimeline", applicationId],
+    queryFn: () => api.applicationTimeline(applicationId!),
+    enabled: !!applicationId,
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-2">
@@ -372,7 +411,7 @@ function ActivityTab({ job }: { job: Job }) {
     return <ErrorBanner title="Couldn't load activity" message={errorMessage(error)} />;
   }
 
-  const timeline = buildTimeline(job, changes);
+  const timeline = buildTimeline(job, changes, events);
 
   return (
     <ul className="space-y-2">
@@ -388,7 +427,23 @@ function ActivityTab({ job }: { job: Job }) {
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const jobId = Number(id);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const [tab, setTab] = useState<Tab>(
+    initialTab && VALID_TABS.has(initialTab as Tab) ? (initialTab as Tab) : "overview",
+  );
+
+  // Keep the URL's ?tab= in sync so deep links (e.g. "Start Application"
+  // from the Jobs page) and in-page tab switches both work.
+  useEffect(() => {
+    const current = searchParams.get("tab");
+    if (current !== tab) {
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", tab);
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const {
     data: job,
@@ -493,6 +548,7 @@ export default function JobDetailPage() {
       )}
       {tab === "original" && <OriginalDescriptionTab job={job} />}
       {tab === "workspace" && <AIWorkspace job={job} />}
+      {tab === "apply" && <ApplicationKit job={job} onGoToWorkspace={() => setTab("workspace")} />}
       {tab === "activity" && <ActivityTab job={job} />}
     </div>
   );

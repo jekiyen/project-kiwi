@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import type { ApplicationStatus } from "./api/client";
+import type { ApplicationReadinessStatus, ApplicationStatus } from "./api/client";
 
 // Backend serializes naive UTC datetimes with no timezone designator
 // (e.g. "2026-07-10T06:33:02"). JS Date parses that as local time, so
@@ -118,6 +118,43 @@ export function AppStatusBadge({ status }: { status: ApplicationStatus }) {
       {APP_STATUS_LABELS[status]}
     </span>
   );
+}
+
+// ── Application Copilot workflow state (Phase 8) ────────────────────────────
+// The Dashboard's per-job badge: before an Application record exists (or
+// while it's still just "saved" with no application in progress), the job
+// is either Ready or Preparing to apply, based on Application Readiness
+// (backend/core/application_readiness.py — the single evaluator, never
+// re-derived here). Once a session has been launched or the application has
+// moved past "saved," the real ApplicationStatus takes over.
+
+export type WorkflowState = "ready" | "preparing" | ApplicationStatus;
+
+export function computeWorkflowState(
+  applicationStatus: ApplicationStatus | undefined,
+  hasActiveSession: boolean,
+  readinessStatus: ApplicationReadinessStatus | undefined,
+): WorkflowState {
+  if (applicationStatus && applicationStatus !== "saved") return applicationStatus;
+  if (hasActiveSession) return "preparing";
+  return readinessStatus === "ready" ? "ready" : "preparing";
+}
+
+const WORKFLOW_STATE_CONFIG: Record<"ready" | "preparing", { label: string; cls: string }> = {
+  ready: { label: "Ready", cls: "bg-emerald-900/50 text-emerald-300" },
+  preparing: { label: "Preparing", cls: "bg-amber-900/50 text-amber-300" },
+};
+
+export function WorkflowBadge({ state }: { state: WorkflowState }) {
+  if (state === "ready" || state === "preparing") {
+    const cfg = WORKFLOW_STATE_CONFIG[state];
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cfg.cls}`}>
+        {cfg.label}
+      </span>
+    );
+  }
+  return <AppStatusBadge status={state} />;
 }
 
 export function SkeletonStatCard() {

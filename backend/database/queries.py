@@ -2,7 +2,14 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from backend.database.models import ApplicationEvent, ApplicationStatus, Job, Scan
+from backend.database.models import (
+    ApplicationEvent,
+    ApplicationSession,
+    ApplicationSessionStatus,
+    ApplicationStatus,
+    Job,
+    Scan,
+)
 
 
 def get_job_by_external_id(session: Session, external_id: str, source: str) -> Job | None:
@@ -57,3 +64,16 @@ def get_application_timeline(session: Session, application_id: int) -> list[Appl
             .order_by(ApplicationEvent.created_at.asc())
         ).all()
     )
+
+
+def get_active_session(session: Session, application_id: int) -> ApplicationSession | None:
+    """The most recent not-yet-terminal (STARTED) session for an
+    application — at most one should ever be active at a time."""
+    return session.exec(
+        select(ApplicationSession)
+        .where(
+            ApplicationSession.application_id == application_id,
+            ApplicationSession.status == ApplicationSessionStatus.STARTED,
+        )
+        .order_by(ApplicationSession.id.desc())
+    ).first()

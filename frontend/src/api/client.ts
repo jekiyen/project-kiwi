@@ -84,6 +84,9 @@ export interface Job {
   first_seen_at: string;
   last_seen_at: string;
   salary_text: string | null;
+  // Application Copilot (Phase 8) — stamped when the Cover Letter prompt is
+  // generated for this job; the only signal Kiwi has for "prepared."
+  cover_letter_generated_at: string | null;
 }
 
 // ── Application tracker types (Phase 4) ───────────────────────────────────────
@@ -106,10 +109,14 @@ export interface Application {
   updated_at: string;
 }
 
+export type ApplicationEventType =
+  | "created" | "status_change" | "note_updated"
+  | "session_started" | "session_resumed" | "session_completed" | "session_cancelled";
+
 export interface ApplicationEvent {
   id: number;
   application_id: number;
-  event_type: "created" | "status_change" | "note_updated";
+  event_type: ApplicationEventType;
   from_status: ApplicationStatus | null;
   to_status: ApplicationStatus | null;
   detail: string | null;
@@ -126,6 +133,8 @@ export interface ApplicationWithJob extends Application {
   job_role_priority: string | null;
   job_ai_priority: string | null;
   job_salary_text: string | null;
+  // Phase 8 — set when a not-yet-terminal ApplicationSession exists.
+  active_session_status: "started" | null;
 }
 
 export interface PipelineCounts {
@@ -316,6 +325,64 @@ export type ApplicationProfileUpdate = Omit<ApplicationProfile, "id" | "created_
   references: ApplicationReferenceInput[];
 };
 
+// ── Application Copilot (Phase 8) ────────────────────────────────────────────
+// Kiwi assists, the user submits: Launch only ever opens the original job
+// URL in a new tab — it never fills in or submits the employer's form.
+// Application Readiness is the single evaluator (backend/core/
+// application_readiness.py) used everywhere below; never re-derived here.
+
+export type ApplicationReadinessStatus = "ready" | "partial" | "not_ready";
+
+export interface SectionReadiness {
+  resume: boolean;
+  application_profile: boolean;
+  cover_letter: boolean;
+  references: boolean;
+  work_rights: boolean;
+}
+
+export interface ApplicationReadiness {
+  status: ApplicationReadinessStatus;
+  sections: SectionReadiness;
+  missing: string[];
+  score: number;
+  estimated_minutes: number;
+}
+
+export type ApplicationSessionStatus = "started" | "completed" | "cancelled";
+
+export interface ApplicationSession {
+  id: number;
+  application_id: number;
+  status: ApplicationSessionStatus;
+  started_at: string;
+  last_opened_at: string;
+  completed_at: string | null;
+  duration_seconds: number;
+  resume_version: string | null;
+  cover_letter_version: string | null;
+  profile_version: string | null;
+}
+
+export interface ApplicationKit {
+  readiness: ApplicationReadiness;
+  application: Application | null;
+  active_session: ApplicationSession | null;
+}
+
+export interface LaunchApplicationResponse {
+  url: string;
+  application: Application;
+  session: ApplicationSession;
+}
+
+export type ApplicationSessionOutcome = "applied" | "not_yet" | "cancelled";
+
+export interface CompleteSessionResponse {
+  application: Application;
+  session: ApplicationSession;
+}
+
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -424,5 +491,19 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+    }),
+
+  // Application Copilot (Phase 8)
+  applicationReadiness: (jobId: number) =>
+    request<ApplicationReadiness>(`/jobs/${jobId}/application-readiness`),
+  readinessSummary: () => request<Record<string, ApplicationReadinessStatus>>("/jobs/readiness-summary"),
+  applicationKit: (jobId: number) => request<ApplicationKit>(`/jobs/${jobId}/application-kit`),
+  launchApplication: (jobId: number) =>
+    request<LaunchApplicationResponse>(`/jobs/${jobId}/launch-application`, { method: "POST" }),
+  completeApplicationSession: (jobId: number, outcome: ApplicationSessionOutcome) =>
+    request<CompleteSessionResponse>(`/jobs/${jobId}/application-session/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outcome }),
     }),
 };

@@ -8,20 +8,22 @@ from sqlmodel import Session, select
 from backend.database.models import (
     Application,
     ApplicationEvent,
+    ApplicationSession,
     ApplicationStatus,
     ApplicationUpdate,
     ApplicationWithJob,
     Job,
     PipelineCounts,
 )
-from backend.database.queries import get_application_timeline, log_application_event
+from backend.database.queries import get_active_session, get_application_timeline, log_application_event
 from backend.database.session import get_session
 from backend.notifications import NotificationEvent, NotificationEventType, notification_service
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
 
-def _build_with_job(app: Application, job: Job) -> ApplicationWithJob:
+def _build_with_job(session: Session, app: Application, job: Job) -> ApplicationWithJob:
+    active_session = get_active_session(session, app.id)
     return ApplicationWithJob(
         id=app.id,
         job_id=app.job_id,
@@ -43,6 +45,7 @@ def _build_with_job(app: Application, job: Job) -> ApplicationWithJob:
         job_role_priority=job.role_priority.value if job.role_priority else None,
         job_ai_priority=job.ai_priority,
         job_salary_text=job.salary_text,
+        active_session_status=active_session.status.value if active_session else None,
     )
 
 
@@ -109,7 +112,7 @@ async def list_applications(
             )
         )
     rows = session.execute(stmt).all()
-    return [_build_with_job(app, job) for app, job in rows]
+    return [_build_with_job(session, app, job) for app, job in rows]
 
 
 @router.post("/", status_code=201)
@@ -213,7 +216,9 @@ async def delete_application(
     application_id: int,
     session: Session = Depends(get_session),
 ) -> None:
-    """Remove an application record and its timeline history."""
+    """Remove an application record along with its timeline history and any
+    Application Sessions (Phase 8) — nothing should be left pointing at a
+    deleted application_id."""
     app = session.get(Application, application_id)
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -222,5 +227,10 @@ async def delete_application(
     ).all()
     for event in events:
         session.delete(event)
+    sessions = session.exec(
+        select(ApplicationSession).where(ApplicationSession.application_id == application_id)
+    ).all()
+    for sess in sessions:
+        session.delete(sess)
     session.delete(app)
     session.commit()

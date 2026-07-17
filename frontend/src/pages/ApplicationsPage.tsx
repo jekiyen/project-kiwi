@@ -15,6 +15,13 @@ import {
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
+const SESSION_EVENT_LABELS: Partial<Record<ApplicationEvent["event_type"], string>> = {
+  session_started: "Application started",
+  session_resumed: "Application resumed",
+  session_completed: "Application completed",
+  session_cancelled: "Application cancelled",
+};
+
 function timelineEventLabel(event: ApplicationEvent): string {
   if (event.event_type === "created") {
     return `Application created — ${APP_STATUS_LABELS[event.to_status as ApplicationStatus]}`;
@@ -24,7 +31,7 @@ function timelineEventLabel(event: ApplicationEvent): string {
     const to = event.to_status ? APP_STATUS_LABELS[event.to_status] : "—";
     return `${from} → ${to}`;
   }
-  return event.detail ?? event.event_type;
+  return SESSION_EVENT_LABELS[event.event_type] ?? event.detail ?? event.event_type;
 }
 
 function Timeline({ applicationId }: { applicationId: number }) {

@@ -232,36 +232,41 @@ Turns every scraped job description into a structured "Kiwi Job Summary" before 
 - Frontend: the old single Description tab is now five tabs. **Overview** — a Quick Facts grid (Job Title, Company, Location, Employment Type ["Not specified" — no such field exists on Job, stated honestly rather than guessed], Salary, Visa Status shown only when available) plus the extracted overview paragraph. **AI Summary** — Responsibilities / Required Qualifications / Preferred Qualifications / Benefits / Work Environment / Warnings as labelled cards, each hidden entirely when empty rather than rendering blank. **Original Description** — the untouched raw text with a Copy-to-clipboard button, expand/collapse for long text (>600 chars, gradient-faded when collapsed), and preserved line breaks/whitespace. **Activity** — no longer just a raw `JobChange` diff list: synthesizes "Job discovered," "AI analysis completed" (with score), and "Seen again in a scan" milestones from the job's own timestamps and merges them chronologically with real change events, so a freshly-scraped job with zero edits still shows a meaningful timeline instead of an empty page. Overview and AI Summary both auto-fall-back to the same raw-description card (with a small notice) when the summary comes back empty or the request fails.
 - 29 new backend tests (heading detection incl. the false-positive-on-prose case, all fallback branches, `is_empty()`, the text formatter, the two API endpoints, PATCH-triggered regeneration, Prompt Guard now sourcing from the summary) — full suite: 358 passed. Verified live with Playwright against real (self-healing legacy) job data across two rounds: first the backend wiring end-to-end, then a follow-up pass specifically on tab content — confirmed Quick Facts render correctly, all AI Summary sections populate with empty ones hidden, Original Description's expand/collapse and clipboard copy both work with formatting intact, and the Activity timeline shows synthesized milestones even for a job with zero real changes — zero console errors throughout. Test edits made to real jobs during verification were reverted afterward.
 
-#### Phase 8.0 — Application Profile
+### Phase 8 — Application Copilot
 **Status:** Complete
 
-Single source of truth for all reusable applicant information — personal details, work rights, professional links, references, and emergency contact. An architectural milestone, not an AI feature: no AI provider integration, no generation, purely a structured profile that's editable and persisted. Designed so a future ATS handler can request `application_profile` without caring where the data comes from. The Application Workflow will consume this profile in the next milestone.
+Transforms Kiwi from a Job Tracker into an Application Copilot: it reduces the effort of applying to NZ jobs while keeping the applicant fully in control. Kiwi assists — it never submits an application automatically. The user always launches, fills in, and submits the employer's own form; Kiwi only prepares, tracks, and follows up.
 
-- `ApplicationProfile` (migration `008_application_profile.py`) — a singleton table: the API upserts the one existing row rather than exposing multiple records, created lazily on first `GET`. Fields cover Personal Information (full/preferred name, email, phone, current address, city, country, nationality), Work Rights (current country, visa status, eligible to work in NZ, need sponsorship, driver license, own vehicle), Professional Links (LinkedIn, portfolio, Github, website), Emergency Contact (name, relationship, phone), and free-text Notes.
-- `ApplicationReference` — a separate table (name, company, relationship, email, phone) owned by the profile; fully replaced on every `PUT` rather than needing separate CRUD routes, keeping the API surface to exactly two endpoints.
-- API: `GET /application-profile` (creates the singleton on first call) and `PUT /application-profile` (full replace — every field is set to what's sent, including `references`, so omitted fields reset rather than merge).
-- Resume data is never duplicated here — the profile's Resume section reads the Active Resume from the Resume Vault (`GET /resumes/`) and links back to it; no file or metadata is copied.
-- Frontend: new `/application-profile` page and sidebar nav item. Sections as cards matching the existing design language (Personal Information, Work Rights, Professional Links, Resume shortcut, References with inline add/remove, Emergency Contact, Notes), a single "Save Profile" action that PUTs the whole form plus the current reference list.
-- 17 new backend tests (singleton creation/idempotency, full-field persistence per section, full-replace semantics on omitted fields, reference wholesale replace/clear, validation) — full suite: 375 passed. Frontend: clean `tsc` + `vite build`, verified live against the running dev backend (GET returns the lazily-created empty singleton; sections render and persist correctly).
+- **Application Profile** — the single source of truth for reusable applicant information, and the foundation everything else in this phase reads from. A singleton `ApplicationProfile` table (migration `008_application_profile.py`; the API upserts the one existing row rather than exposing multiple records, created lazily on first `GET`) covering Personal Information, Work Rights, Professional Links, Emergency Contact, and free-text Notes, plus a separate `ApplicationReference` table fully replaced on every `PUT`. API: `GET`/`PUT /application-profile` (two endpoints total). Resume data is never duplicated — the profile's Resume section reads the Active Resume from the Resume Vault and links back to it. New `/application-profile` page and sidebar nav item, sections as cards, a single "Save Profile" action.
+- **Application Readiness Engine** (`backend/core/application_readiness.py`) — the single deterministic evaluator for "is the user ready to apply to this job," used everywhere and never re-implemented: NOT_READY when the active Resume or a filled-in Application Profile is missing; PARTIAL when the Cover Letter, References, Phone Number, Driver License, or Work Rights are missing; READY otherwise. Produces a 0–100 score and a rough estimated-completion-time in minutes alongside the missing-item list.
+- **Application Kit** (`GET /jobs/{id}/application-kit`) — replaces the old instant "Apply" button. Shows Resume / Cover Letter / Application Profile / References / Work Rights readiness per section (each linking straight to where it can be fixed), the Readiness Score, Estimated Completion Time, and Missing Information. `Job.cover_letter_generated_at` (migration `009_application_copilot.py`) is stamped whenever the Cover Letter prompt is generated in the AI Workspace — Kiwi never stores the AI's actual output, so this timestamp is the only signal the engine has for "a cover letter has been prepared."
+- **Launch Application** (`POST /jobs/{id}/launch-application`) — opens the original job URL in a new tab. Never auto-submits, never clicks anything, never uploads anything. Creates the `Application` record if one doesn't exist yet and starts (or resumes) an `ApplicationSession`.
+- **Application Session** (`ApplicationSession` table) — tracks Started, Last Opened, Duration, Current Status (started/completed/cancelled), and snapshots of the Resume/Cover Letter/Profile versions in use at launch time.
+- **Manual Completion** (`POST /jobs/{id}/application-session/complete`) — Kiwi never guesses whether an application was submitted. Coming back from the employer's site surfaces "Did you successfully submit this application?" with Applied / Not Yet / Cancelled — only the user decides. Applied moves the underlying `Application.status` to `applied` (reusing the existing status-change + notification path); Cancelled leaves it untouched; Not Yet leaves the session open to resume later.
+- **Timeline** — Application Session lifecycle events (`session_started`, `session_resumed`, `session_completed`, `session_cancelled`) are logged as `ApplicationEvent` rows and merged into both the Job Detail page's Activity tab (alongside job-discovery/change milestones) and the Applications page's per-application timeline — one event log, two views.
+- **Dashboard** — the Jobs page now shows a live workflow badge per job (Ready / Preparing / Applied / Interview / Offer / Rejected / …), computed from the same Readiness Engine (bulk `GET /jobs/readiness-summary`, one query for every active job) plus each job's real `ApplicationStatus` and any in-progress session — never a second copy of the rules.
+- Fixed a related correctness gap while wiring this up: `DELETE /applications/{id}` previously left orphaned `ApplicationSession` rows behind; it now cascades to delete those too.
+- 37 new backend tests (Readiness Engine unit tests for every rule, Application Kit / readiness-summary / launch / complete-session endpoints incl. all three outcomes, cover-letter stamping, the cascade-delete fix) — full suite: 412 passed. Frontend: clean `tsc` + `vite build`. Verified live against the running dev backend end-to-end (launch → resume → application-kit → complete with each outcome → readiness-summary reflects the change), then reverted the test application/session so no fake activity was left on a real job.
 
-### Phase 8 — Automated Applications
-- Web form detection and auto-fill per employer site
-- Email application sending with tailored content
-- Application confirmation and receipt tracking
+### Phase 9 — Interview Copilot
+- Interview preparation workspace once an application reaches the Interview stage
+- Likely-questions and talking-points generation via the existing Prompt Engine (no new AI integration)
+- Interview scheduling/reminders surfaced through existing notifications
+- Post-interview follow-up tracking integrated into the existing Activity timeline
 
-### Phase 9 — Visa Advisor
+### Phase 10 — Visa Advisor
 - Accredited Employer Work Visa pathway guide
 - Working Holiday Visa eligibility checker
 - Document checklist per visa type
 - Timeline estimator for visa processing
 
-### Phase 10 — Cloud Deployment
+### Phase 11 — Cloud Deployment
 - Dockerize all services
 - Deploy to VPS with persistent storage
 - Remote dashboard access (secured)
 - Cloud-scheduled scanning (no local machine required)
 
-### Phase 11 — Settlement Assistant
+### Phase 12 — Settlement Assistant
 - Housing research by NZ region
 - Cost of living calculator
 - Community guides for regions with high seasonal work

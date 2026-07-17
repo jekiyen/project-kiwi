@@ -9,8 +9,29 @@ from backend.ai import get_ai_provider
 from backend.api.v1.common import MessageResponse
 from backend.config.user_profile import USER_PROFILE
 from backend.core.ai_readiness import ReadinessStatus, evaluate_ai_readiness
-from backend.database.models import Application, ApplicationStatus, Job, JobChange, Resume
-from backend.database.queries import log_application_event
+from backend.core.application_readiness import (
+    ApplicationReadiness,
+    evaluate_application_readiness,
+)
+from backend.database.models import (
+    Application,
+    ApplicationKitResponse,
+    ApplicationProfile,
+    ApplicationReadinessResponse,
+    ApplicationReference,
+    ApplicationSession,
+    ApplicationSessionResponse,
+    ApplicationSessionStatus,
+    ApplicationStatus,
+    CompleteSessionRequest,
+    CompleteSessionResponse,
+    Job,
+    JobChange,
+    LaunchApplicationResponse,
+    Resume,
+    SectionReadinessOut,
+)
+from backend.database.queries import get_active_session, log_application_event
 from backend.database.session import get_session
 from backend.job_summary import JobSummary, load_job_summary, render_summary_as_text, summarize_job
 from backend.notifications import NotificationEvent, NotificationEventType, notification_service
@@ -59,6 +80,72 @@ async def list_jobs(
     stmt = stmt.order_by(Job.ai_match_score.desc(), Job.first_seen_at.desc())
     stmt = stmt.offset(offset).limit(limit)
     return list(session.exec(stmt).all())
+
+
+# ── Application Copilot (Phase 8) — Readiness Engine ─────────────────────────
+# backend/core/application_readiness.py is the single evaluator; every
+# endpoint below is a thin wrapper around it — never re-implement the rules.
+
+def _evaluate_job_readiness(session: Session, job: Job) -> ApplicationReadiness:
+    profile = session.exec(select(ApplicationProfile)).first()
+    references = (
+        list(session.exec(
+            select(ApplicationReference).where(ApplicationReference.profile_id == profile.id)
+        ).all())
+        if profile
+        else []
+    )
+    active_resume = session.exec(select(Resume).where(Resume.is_active == True)).first()  # noqa: E712
+    return evaluate_application_readiness(job, profile, references, active_resume)
+
+
+def _readiness_to_response(readiness: ApplicationReadiness) -> ApplicationReadinessResponse:
+    return ApplicationReadinessResponse(
+        status=readiness.status.value,
+        sections=SectionReadinessOut(
+            resume=readiness.sections.resume,
+            application_profile=readiness.sections.application_profile,
+            cover_letter=readiness.sections.cover_letter,
+            references=readiness.sections.references,
+            work_rights=readiness.sections.work_rights,
+        ),
+        missing=readiness.missing,
+        score=readiness.score,
+        estimated_minutes=readiness.estimated_minutes,
+    )
+
+
+@router.get("/readiness-summary")
+async def get_readiness_summary(session: Session = Depends(get_session)) -> dict[str, str]:
+    """Bulk Application Readiness status for every active job, in one query
+    round trip — powers the Dashboard's Ready/Preparing badges. Application
+    Profile, references, and active resume are shared across every job and
+    fetched once; only Job.cover_letter_generated_at varies per job."""
+    profile = session.exec(select(ApplicationProfile)).first()
+    references = (
+        list(session.exec(
+            select(ApplicationReference).where(ApplicationReference.profile_id == profile.id)
+        ).all())
+        if profile
+        else []
+    )
+    active_resume = session.exec(select(Resume).where(Resume.is_active == True)).first()  # noqa: E712
+    jobs = session.exec(select(Job).where(Job.is_active == True)).all()  # noqa: E712
+
+    return {
+        str(job.id): evaluate_application_readiness(job, profile, references, active_resume).status.value
+        for job in jobs
+    }
+
+
+@router.get("/{job_id}/application-readiness", response_model=ApplicationReadinessResponse)
+async def get_job_application_readiness(
+    job_id: int, session: Session = Depends(get_session)
+) -> ApplicationReadinessResponse:
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return _readiness_to_response(_evaluate_job_readiness(session, job))
 
 
 @router.get("/{job_id}")
@@ -250,6 +337,173 @@ async def apply_to_job(
     return app
 
 
+# ── Application Copilot (Phase 8) — Application Kit / Launch / Sessions ──────
+# Kiwi assists, the user submits: launch only ever hands back the original
+# job URL for the frontend to open in a new tab. It never submits anything,
+# clicks anything, or uploads anything on the employer's site.
+
+def _session_to_response(sess: ApplicationSession) -> ApplicationSessionResponse:
+    end = sess.completed_at or datetime.utcnow()
+    return ApplicationSessionResponse(
+        id=sess.id,
+        application_id=sess.application_id,
+        status=sess.status,
+        started_at=sess.started_at,
+        last_opened_at=sess.last_opened_at,
+        completed_at=sess.completed_at,
+        duration_seconds=int((end - sess.started_at).total_seconds()),
+        resume_version=sess.resume_version,
+        cover_letter_version=sess.cover_letter_version,
+        profile_version=sess.profile_version,
+    )
+
+
+@router.get("/{job_id}/application-kit", response_model=ApplicationKitResponse)
+async def get_application_kit(job_id: int, session: Session = Depends(get_session)) -> ApplicationKitResponse:
+    """Everything the Application Kit needs in one call: Application
+    Readiness, the Application record (if one exists yet), and the current
+    in-progress session (if the user has launched and not yet confirmed an
+    outcome)."""
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    readiness = _evaluate_job_readiness(session, job)
+    app = session.exec(select(Application).where(Application.job_id == job_id)).first()
+    active_session = get_active_session(session, app.id) if app else None
+
+    return ApplicationKitResponse(
+        readiness=_readiness_to_response(readiness),
+        application=app,
+        active_session=_session_to_response(active_session) if active_session else None,
+    )
+
+
+@router.post("/{job_id}/launch-application", response_model=LaunchApplicationResponse)
+async def launch_application(
+    job_id: int,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+) -> LaunchApplicationResponse:
+    """Creates the Application record if one doesn't exist yet (same
+    idempotent pattern as save_job/apply_to_job), then either resumes the
+    existing in-progress session or starts a new one. Returns the job URL
+    for the frontend to open — Launch never navigates or submits anything
+    server-side."""
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    app = session.exec(select(Application).where(Application.job_id == job_id)).first()
+    is_new_app = app is None
+    if app is None:
+        app = Application(job_id=job_id)
+        session.add(app)
+        session.flush()  # assigns app.id without ending the transaction
+
+    active_resume = session.exec(select(Resume).where(Resume.is_active == True)).first()  # noqa: E712
+    profile = session.exec(select(ApplicationProfile)).first()
+
+    existing_session = get_active_session(session, app.id)
+    if existing_session:
+        existing_session.last_opened_at = datetime.utcnow()
+        session.add(existing_session)
+        log_application_event(session, app.id, "session_resumed", detail="Application resumed")
+        the_session = existing_session
+    else:
+        the_session = ApplicationSession(
+            application_id=app.id,
+            resume_version=active_resume.filename if active_resume else None,
+            cover_letter_version=(
+                job.cover_letter_generated_at.isoformat() if job.cover_letter_generated_at else None
+            ),
+            profile_version=profile.updated_at.isoformat() if profile else None,
+        )
+        session.add(the_session)
+        log_application_event(session, app.id, "session_started", detail="Application started")
+
+    if is_new_app:
+        log_application_event(session, app.id, "created", to_status=app.status)
+
+    session.commit()
+    session.refresh(app)
+    session.refresh(the_session)
+
+    if is_new_app:
+        _dispatch_application_created(background_tasks, job, app)
+
+    return LaunchApplicationResponse(
+        url=job.url,
+        application=app,
+        session=_session_to_response(the_session),
+    )
+
+
+_VALID_OUTCOMES = {"applied", "not_yet", "cancelled"}
+
+
+@router.post("/{job_id}/application-session/complete", response_model=CompleteSessionResponse)
+async def complete_application_session(
+    job_id: int,
+    body: CompleteSessionRequest,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+) -> CompleteSessionResponse:
+    """Manual completion — Kiwi never guesses whether an application was
+    actually submitted. The user tells it: Applied, Not Yet, or Cancelled."""
+    if body.outcome not in _VALID_OUTCOMES:
+        raise HTTPException(status_code=422, detail=f"outcome must be one of {sorted(_VALID_OUTCOMES)}")
+
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    app = session.exec(select(Application).where(Application.job_id == job_id)).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="No application exists for this job yet")
+
+    the_session = get_active_session(session, app.id)
+    if not the_session:
+        raise HTTPException(status_code=409, detail="No in-progress application session for this job")
+
+    if body.outcome == "applied":
+        the_session.status = ApplicationSessionStatus.COMPLETED
+        the_session.completed_at = datetime.utcnow()
+        session.add(the_session)
+        log_application_event(session, app.id, "session_completed", detail="Applied")
+
+        previous_status = app.status
+        status_changed = previous_status != ApplicationStatus.APPLIED
+        app.status = ApplicationStatus.APPLIED
+        if app.applied_at is None:
+            app.applied_at = datetime.utcnow()
+        app.updated_at = datetime.utcnow()
+        session.add(app)
+        if status_changed:
+            log_application_event(
+                session, app.id, "status_change", from_status=previous_status, to_status=app.status
+            )
+        session.commit()
+        session.refresh(app)
+        session.refresh(the_session)
+        if status_changed:
+            _dispatch_application_status_changed(background_tasks, job, app, previous_status)
+
+    elif body.outcome == "cancelled":
+        the_session.status = ApplicationSessionStatus.CANCELLED
+        the_session.completed_at = datetime.utcnow()
+        session.add(the_session)
+        log_application_event(session, app.id, "session_cancelled", detail="Application cancelled")
+        session.commit()
+        session.refresh(app)
+        session.refresh(the_session)
+
+    else:  # "not_yet" — still in progress server-side, nothing to change
+        pass
+
+    return CompleteSessionResponse(application=app, session=_session_to_response(the_session))
+
+
 class GeneratedPrompt(BaseModel):
     title: str
     content: str
@@ -328,6 +582,15 @@ async def generate_job_prompt(
     }
 
     content = render_template(action.template_file, variables)
+
+    if action_id == "cover_letter":
+        # Kiwi never stores the AI's actual output (it's pasted into Claude
+        # by hand) — this timestamp is the only signal the Application
+        # Readiness Engine can use for "a cover letter has been prepared."
+        job.cover_letter_generated_at = datetime.utcnow()
+        session.add(job)
+        session.commit()
+
     return GeneratedPrompt(
         title=action.label, content=content, readiness_status=readiness.status.value, disclaimer=disclaimer
     )
