@@ -112,6 +112,13 @@ class SeasonalJobsScraper(BaseScraper):
             if not url or not url.startswith("http"):
                 return None
 
+            # Defence in depth: never store a card whose link resolves to one
+            # of the category/homepage URLs we scrape rather than a specific job.
+            from backend.core.listing_url import is_exact_listing_url
+            if not is_exact_listing_url(self.source_name, url):
+                logger.warning("SeasonalJobs: skipping card with non-listing URL: %s", url)
+                return None
+
             employer_el = card.select_one("div.cname")
             employer = employer_el.get_text(strip=True) if employer_el else "Unknown"
 

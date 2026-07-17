@@ -1,0 +1,32 @@
+/* Kiwi Autofill — field highlight states. Injected only on pages the
+   extension might autofill (never on Kiwi's own frontend). */
+
+.kiwi-filled {
+  outline: 2px solid #34d399 !important;
+  outline-offset: 1px !important;
+  background-color: rgba(52, 211, 153, 0.08) !important;
+}
+
+.kiwi-review {
+  outline: 2px dashed #fbbf24 !important;
+  outline-offset: 1px !important;
+  background-color: rgba(251, 191, 36, 0.08) !important;
+}
+
+.kiwi-review[data-kiwi-hint]:hover::after {
+  content: attr(data-kiwi-hint);
+  position: absolute;
+  z-index: 2147483647;
+  margin-top: 4px;
+  max-width: 280px;
+  padding: 6px 10px;
+  background: #111827;
+  color: #e5e7eb;
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  border-radius: 6px;
+  border: 1px solid #374151;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  white-space: normal;
+  line-height: 1.4;
+}

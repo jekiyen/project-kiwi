@@ -88,6 +88,7 @@ export const APP_STATUS_TONE: Record<ApplicationStatus, Tone> = {
   visa: "success",
   rejected: "danger",
   archived: "neutral",
+  unavailable: "neutral",
 };
 
 export const APP_STATUS_LABELS: Record<ApplicationStatus, string> = {
@@ -98,6 +99,7 @@ export const APP_STATUS_LABELS: Record<ApplicationStatus, string> = {
   visa: "Visa",
   rejected: "Rejected",
   archived: "Archived",
+  unavailable: "Listing Unavailable",
 };
 
 export const ALL_STATUSES: ApplicationStatus[] = [
@@ -108,6 +110,7 @@ export const ALL_STATUSES: ApplicationStatus[] = [
   "visa",
   "rejected",
   "archived",
+  "unavailable",
 ];
 
 export function AppStatusBadge({ status }: { status: ApplicationStatus }) {

@@ -93,7 +93,7 @@ export interface Job {
 
 export type ApplicationStatus =
   | "saved" | "applied" | "interview" | "offer"
-  | "rejected" | "visa" | "archived";
+  | "rejected" | "visa" | "archived" | "unavailable";
 
 export interface Application {
   id: number;
@@ -111,7 +111,8 @@ export interface Application {
 
 export type ApplicationEventType =
   | "created" | "status_change" | "note_updated"
-  | "session_started" | "session_resumed" | "session_completed" | "session_cancelled";
+  | "session_started" | "session_resumed" | "session_completed" | "session_cancelled"
+  | "session_listing_unavailable";
 
 export interface ApplicationEvent {
   id: number;
@@ -145,6 +146,7 @@ export interface PipelineCounts {
   rejected: number;
   visa: number;
   archived: number;
+  unavailable: number;
   total: number;
 }
 
@@ -368,6 +370,12 @@ export interface ApplicationKit {
   readiness: ApplicationReadiness;
   application: Application | null;
   active_session: ApplicationSession | null;
+  // Application Flow Reliability — whether the job's stored url is the
+  // exact per-listing page, or a search/category page Kiwi must not
+  // silently treat as the application destination.
+  listing_url_exact: boolean;
+  fallback_link: string | null;
+  fallback_is_search: boolean;
 }
 
 export interface LaunchApplicationResponse {
@@ -376,7 +384,7 @@ export interface LaunchApplicationResponse {
   session: ApplicationSession;
 }
 
-export type ApplicationSessionOutcome = "applied" | "not_yet" | "cancelled";
+export type ApplicationSessionOutcome = "applied" | "not_yet" | "cancelled" | "listing_unavailable";
 
 export interface CompleteSessionResponse {
   application: Application;

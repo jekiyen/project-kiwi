@@ -240,3 +240,18 @@ def test_multiple_trademe_jobs_all_stored(db_session):
     jobs = [make_scraped(f"tm-{i}") for i in range(4)]
     new, _, __ = agent._store_scraped_jobs(db_session, jobs)
     assert new == 4
+
+
+# ── Listing URL validation guard ──────────────────────────────────────────────
+
+def test_card_without_listing_id_in_href_is_skipped(scraper):
+    """A card whose link has no /listing/<id> segment (e.g. a category or
+    search link) must never be stored — see backend/core/listing_url.py."""
+    html = """
+    <tm-jobs-search-card>
+      <a class="tm-jobs-search-card__title">Some Job</a>
+      <a class="tm-jobs-search-card__link" href="/a/jobs/agriculture-fishing-forestry/farming/otago/dunedin">link</a>
+    </tm-jobs-search-card>
+    """
+    jobs = scraper._parse_page(html)
+    assert jobs == []

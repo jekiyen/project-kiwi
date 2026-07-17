@@ -213,3 +213,20 @@ def test_multiple_backpacker_jobs_all_stored(db_session):
     jobs = [make_scraped(str(100 + i), f"Job Title {i}") for i in range(3)]
     new, _, __ = agent._store_scraped_jobs(db_session, jobs)
     assert new == 3
+
+
+# ── Listing URL validation guard ──────────────────────────────────────────────
+
+def test_row_without_job_id_pattern_is_skipped(scraper):
+    """A row whose href doesn't match the new-zealand-jobs<id>.html pattern
+    (e.g. the listing-index page itself) must never be stored — see
+    backend/core/listing_url.py."""
+    html = """
+    <table><tr class="rowgrey">
+      <td><a href="job_listings.php?new-zealand-jobs=all">Some Job</a></td>
+      <td></td>
+      <td>Auckland</td>
+    </tr></table>
+    """
+    jobs = scraper._parse_page(html)
+    assert jobs == []

@@ -14,6 +14,7 @@ from backend.core.application_readiness import (
     evaluate_application_readiness,
 )
 from backend.core.job_intelligence import evaluate_job_intelligence, find_similar_jobs
+from backend.core.listing_url import build_fallback_link, is_exact_listing_url
 from backend.database.models import (
     Application,
     ApplicationKitResponse,
@@ -457,10 +458,21 @@ async def get_application_kit(job_id: int, session: Session = Depends(get_sessio
     app = session.exec(select(Application).where(Application.job_id == job_id)).first()
     active_session = get_active_session(session, app.id) if app else None
 
+    exact = is_exact_listing_url(job.source, job.url)
+    fallback_link: str | None = None
+    fallback_is_search = False
+    if not exact:
+        link, is_search = build_fallback_link(job.source, job.title)
+        fallback_link = link or None
+        fallback_is_search = is_search
+
     return ApplicationKitResponse(
         readiness=_readiness_to_response(readiness),
         application=app,
         active_session=_session_to_response(active_session) if active_session else None,
+        listing_url_exact=exact,
+        fallback_link=fallback_link,
+        fallback_is_search=fallback_is_search,
     )
 
 
@@ -524,7 +536,7 @@ async def launch_application(
     )
 
 
-_VALID_OUTCOMES = {"applied", "not_yet", "cancelled"}
+_VALID_OUTCOMES = {"applied", "not_yet", "cancelled", "listing_unavailable"}
 
 
 @router.post("/{job_id}/application-session/complete", response_model=CompleteSessionResponse)
@@ -535,7 +547,9 @@ async def complete_application_session(
     session: Session = Depends(get_session),
 ) -> CompleteSessionResponse:
     """Manual completion — Kiwi never guesses whether an application was
-    actually submitted. The user tells it: Applied, Not Yet, or Cancelled."""
+    actually submitted. The user tells it: Applied, Not Yet, Cancelled, or
+    Listing Unavailable (the third-party listing turned out to be expired
+    or removed — Kiwi can't detect this itself, only the user can)."""
     if body.outcome not in _VALID_OUTCOMES:
         raise HTTPException(status_code=422, detail=f"outcome must be one of {sorted(_VALID_OUTCOMES)}")
 
@@ -579,6 +593,24 @@ async def complete_application_session(
         the_session.completed_at = datetime.utcnow()
         session.add(the_session)
         log_application_event(session, app.id, "session_cancelled", detail="Application cancelled")
+        session.commit()
+        session.refresh(app)
+        session.refresh(the_session)
+
+    elif body.outcome == "listing_unavailable":
+        the_session.status = ApplicationSessionStatus.CANCELLED
+        the_session.completed_at = datetime.utcnow()
+        session.add(the_session)
+
+        previous_status = app.status
+        app.status = ApplicationStatus.UNAVAILABLE
+        app.updated_at = datetime.utcnow()
+        session.add(app)
+        log_application_event(
+            session, app.id, "session_listing_unavailable",
+            from_status=previous_status, to_status=app.status,
+            detail="Listing reported unavailable/expired",
+        )
         session.commit()
         session.refresh(app)
         session.refresh(the_session)

@@ -142,6 +142,11 @@ class TradeMeScraper(BaseScraper):
             clean_path = href.split("?")[0]
             url = BASE_URL + clean_path
 
+            from backend.core.listing_url import is_exact_listing_url
+            if not is_exact_listing_url(self.source_name, url):
+                logger.warning("Trade Me: skipping card with non-listing URL: %s", url)
+                return None
+
             return ScrapedJob(
                 external_id=listing_id,
                 source=self.source_name,

@@ -240,3 +240,20 @@ def test_different_source_not_deduplicated(db_session):
     )
     new, _, __ = agent._store_scraped_jobs(db_session, [seek_job, other_job])
     assert new == 2
+
+
+# ── Listing URL validation guard ──────────────────────────────────────────────
+
+def test_card_with_non_listing_job_id_is_skipped(scraper):
+    """The constructed URL must match SEEK's per-listing pattern — see
+    backend/core/listing_url.py. (In practice job_id is always numeric
+    since it's extracted via a /job/(\\d+) regex, so this guard is a
+    defence-in-depth safety net against future selector drift.)"""
+    html = """
+    <article data-automation="normalJob">
+      <a data-automation="jobTitle" href="/jobs?keywords=test">Some Job</a>
+      <a data-automation="jobCompany">Some Employer</a>
+    </article>
+    """
+    jobs = scraper._parse_page(html)
+    assert jobs == []

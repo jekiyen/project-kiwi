@@ -207,3 +207,21 @@ def test_multiple_picknz_jobs_all_stored(db_session):
     jobs = [make_scraped(f"job-slug-{i}") for i in range(3)]
     new, _, __ = agent._store_scraped_jobs(db_session, jobs)
     assert new == 3
+
+
+# ── Listing URL validation guard ──────────────────────────────────────────────
+
+def test_card_linking_to_listing_index_is_skipped(scraper):
+    """A card whose link resolves to the listing-index page itself (rather
+    than a specific job) must never be stored — see backend/core/listing_url.py."""
+    html = """
+    <table><tbody class="wpjb-job-list"><tr>
+      <td class="wpjb-column-title">
+        <a href="https://jobs.picknz.co.nz/">Some Job Title</a>
+        <span class="wpjb-sub">Some Employer</span>
+      </td>
+      <td class="wpjb-column-location">Auckland</td>
+    </tr></tbody></table>
+    """
+    jobs = scraper._parse_page(html)
+    assert jobs == []

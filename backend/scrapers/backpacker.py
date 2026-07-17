@@ -93,6 +93,11 @@ class BackpackerBoardScraper(BaseScraper):
 
             url = f"{BASE_URL}/work_jobs/{href}"
 
+            from backend.core.listing_url import is_exact_listing_url
+            if not is_exact_listing_url(self.source_name, url):
+                logger.warning("BackpackerBoard: skipping row with non-listing URL: %s", url)
+                return None
+
             # Location is in the 3rd table cell (index 2)
             cells = row.find_all("td")
             location = "New Zealand"

@@ -204,3 +204,20 @@ def test_multiple_seasonal_jobs_all_stored(db_session):
     jobs = [make_scraped(str(i), f"Seasonal Job {i}") for i in range(10, 13)]
     new, _, __ = agent._store_scraped_jobs(db_session, jobs)
     assert new == 3
+
+
+# ── Listing URL validation guard ──────────────────────────────────────────────
+
+def test_card_linking_to_category_page_is_skipped(scraper):
+    """A card whose link resolves to one of the scraped category/homepage
+    URLs (rather than a specific job) must never be stored — see
+    backend/core/listing_url.py."""
+    html = """
+    <div class="previewBox" id="999">
+      <a class="job_search_title" href="https://seasonaljobs.co.nz/farm-work-jobs/">Some Job</a>
+      <div class="cname">Some Employer</div>
+      <div class="location">Bay of Plenty</div>
+    </div>
+    """
+    jobs = scraper._parse_page(html)
+    assert jobs == []

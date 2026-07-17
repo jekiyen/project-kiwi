@@ -129,13 +129,19 @@ class SeekScraper(BaseScraper):
             salary_el = card.select_one('[data-automation="jobSalary"]')
             salary_text = salary_el.get_text(strip=True) if salary_el else None
 
+            url = f"{BASE_URL}/job/{job_id}"
+            from backend.core.listing_url import is_exact_listing_url
+            if not is_exact_listing_url(self.source_name, url):
+                logger.warning("SEEK: skipping card with non-listing URL: %s", url)
+                return None
+
             return ScrapedJob(
                 external_id=job_id,
                 source=self.source_name,
                 title=title,
                 employer=employer,
                 location=location,
-                url=f"{BASE_URL}/job/{job_id}",
+                url=url,
                 salary_text=salary_text,
                 raw_data={"seek_href": href},
             )

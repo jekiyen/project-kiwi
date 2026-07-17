@@ -138,13 +138,19 @@ class IndeedScraper(BaseScraper):
             location_el = card.select_one("[data-testid='text-location']")
             location = location_el.get_text(strip=True) if location_el else "New Zealand"
 
+            url = f"{BASE_URL}/viewjob?jk={jk}"
+            from backend.core.listing_url import is_exact_listing_url
+            if not is_exact_listing_url(self.source_name, url):
+                logger.warning("Indeed: skipping card with non-listing URL: %s", url)
+                return None
+
             return ScrapedJob(
                 external_id=jk,
                 source=self.source_name,
                 title=title,
                 employer=employer,
                 location=location,
-                url=f"{BASE_URL}/viewjob?jk={jk}",
+                url=url,
             )
         except Exception as exc:
             logger.warning("Indeed: failed to parse card: %s", exc)

@@ -69,6 +69,7 @@ async def get_pipeline(session: Session = Depends(get_session)) -> PipelineCount
         rejected=counts.get("rejected", 0),
         visa=counts.get("visa", 0),
         archived=counts.get("archived", 0),
+        unavailable=counts.get("unavailable", 0),
         total=total,
     )
 

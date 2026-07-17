@@ -502,21 +502,25 @@ function Dashboard() {
     (job.visa_accredited_employer || job.visa_overseas_friendly || job.visa_sponsorship_potential) &&
     !job.visa_nz_rights_required;
 
+  // A job whose listing was reported unavailable/expired is preserved in
+  // history but must never keep surfacing as something still actionable.
+  const isUnavailable = (job: Job) => appsByJobId.get(job.id)?.status === "unavailable";
+
   const filteredJobs = useMemo(() => {
     switch (filter) {
       case "ready":
-        return jobs.filter((j) => readinessSummary[j.id] === "ready");
+        return jobs.filter((j) => readinessSummary[j.id] === "ready" && !isUnavailable(j));
       case "high_match":
         return jobs.filter((j) => {
           const rec = intelligenceSummary[j.id]?.recommendation;
-          return rec ? HIGH_MATCH_RECOMMENDATIONS.has(rec) : false;
+          return rec ? HIGH_MATCH_RECOMMENDATIONS.has(rec) && !isUnavailable(j) : false;
         });
       case "visa_compatible":
         return jobs.filter(visaCompatible);
       case "applied":
         return jobs.filter((j) => {
           const app = appsByJobId.get(j.id);
-          return !!app && app.status !== "saved";
+          return !!app && app.status !== "saved" && app.status !== "unavailable";
         });
       default:
         return jobs;

@@ -12,13 +12,19 @@ class RolePriority(str, Enum):
 
 
 class ApplicationStatus(str, Enum):
-    SAVED      = "saved"
-    APPLIED    = "applied"
-    INTERVIEW  = "interview"
-    OFFER      = "offer"
-    REJECTED   = "rejected"
-    VISA       = "visa"
-    ARCHIVED   = "archived"
+    SAVED       = "saved"
+    APPLIED     = "applied"
+    INTERVIEW   = "interview"
+    OFFER       = "offer"
+    REJECTED    = "rejected"
+    VISA        = "visa"
+    ARCHIVED    = "archived"
+    # Reported by the user via the manual completion banner ("Listing
+    # Unavailable") when the third-party listing turned out to be expired or
+    # removed — distinct from REJECTED (an employer decision) and from the
+    # user's own ARCHIVED (a deliberate housekeeping choice). See
+    # docs/ROADMAP.md "Application Flow Reliability & Assisted Autofill".
+    UNAVAILABLE = "unavailable"
 
 
 class ScanStatus(str, Enum):
@@ -193,6 +199,7 @@ class PipelineCounts(SQLModel):
     rejected: int = 0
     visa: int = 0
     archived: int = 0
+    unavailable: int = 0
     total: int = 0
 
 
@@ -441,6 +448,12 @@ class ApplicationKitResponse(SQLModel):
     readiness: ApplicationReadinessResponse
     application: Optional[Application]
     active_session: Optional[ApplicationSessionResponse]
+    # Application Flow Reliability — whether Job.url is the exact per-listing
+    # page (backend/core/listing_url.py) or a search/category page Kiwi must
+    # not silently open as if it were the application destination.
+    listing_url_exact: bool
+    fallback_link: Optional[str] = None
+    fallback_is_search: bool = False
 
 
 class LaunchApplicationResponse(SQLModel):

@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Circle, HelpCircle, Rocket } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, HelpCircle, PlugZap, Rocket } from "lucide-react";
 import {
   api,
   type ApplicationSessionOutcome,
@@ -8,9 +9,10 @@ import {
   type SectionReadiness,
 } from "../api/client";
 import { useToast } from "../hooks/useToast";
-import { errorMessage, formatDate, formatRelativeTime } from "../shared";
+import { errorMessage, formatDate, formatRelativeTime, sourceLabel } from "../shared";
 import { ScoreGauge, ProgressBar } from "../design/ScoreGauge";
 import { Surface, SectionLabel } from "../design/Surface";
+import { Badge } from "../design/Badge";
 import { buttonClasses, scoreTone } from "../design/tokens";
 
 // The Application Kit — Kiwi assists, the user submits. Launch only ever
@@ -24,6 +26,11 @@ import { buttonClasses, scoreTone } from "../design/tokens";
 // screens in Kiwi: readiness visualized as a gauge + progress bar, the
 // section checklist as a clear scannable list, and Launch treated as the
 // climax of the preparation workflow rather than another card footer.
+//
+// Application Flow Reliability — Kiwi never silently opens a search/
+// category page as if it were the exact listing (backend/core/
+// listing_url.py). When the stored url isn't classified as exact, this
+// shows an honest "Exact job listing unavailable" state instead.
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return "less than a minute";
@@ -32,6 +39,26 @@ function formatDuration(seconds: number): string {
   const hours = Math.floor(minutes / 60);
   const rem = minutes % 60;
   return rem ? `${hours}h ${rem}m` : `${hours}h`;
+}
+
+/** Detects the Kiwi Autofill browser extension, if installed. The extension
+ * (when present) marks `<html data-kiwi-extension="true">` and dispatches a
+ * "kiwi-extension-installed" event on Kiwi's own pages — see extension/
+ * content/kiwi-detect.js. Both signals are checked since content-script
+ * injection timing relative to React mounting isn't guaranteed. */
+function useExtensionDetected(): boolean {
+  const [detected, setDetected] = useState(
+    () => document.documentElement.getAttribute("data-kiwi-extension") === "true",
+  );
+
+  useEffect(() => {
+    if (detected) return;
+    const onInstalled = () => setDetected(true);
+    window.addEventListener("kiwi-extension-installed", onInstalled);
+    return () => window.removeEventListener("kiwi-extension-installed", onInstalled);
+  }, [detected]);
+
+  return detected;
 }
 
 const SECTION_CONFIG: {
@@ -124,6 +151,7 @@ function SectionRow({
 const OUTCOME_BUTTONS: { outcome: ApplicationSessionOutcome; label: string; cls: string }[] = [
   { outcome: "applied", label: "Applied", cls: "bg-emerald-600 hover:bg-emerald-500 text-white" },
   { outcome: "not_yet", label: "Not Yet", cls: "border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500" },
+  { outcome: "listing_unavailable", label: "Listing Unavailable", cls: "border border-gray-700 text-amber-400 hover:text-amber-300 hover:border-amber-800" },
   { outcome: "cancelled", label: "Cancelled", cls: "border border-gray-700 text-gray-400 hover:text-red-400 hover:border-red-900" },
 ];
 
@@ -136,6 +164,7 @@ export default function ApplicationKit({
 }) {
   const qc = useQueryClient();
   const { push } = useToast();
+  const extensionDetected = useExtensionDetected();
 
   const { data: kit, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["applicationKit", job.id],
@@ -151,14 +180,37 @@ export default function ApplicationKit({
     }
   };
 
+  // Launch never silently opens a fallback URL as if it were the listing —
+  // callers explicitly choose which URL to open (the exact listing, or a
+  // clearly-labelled search/browse fallback) via `openUrl`.
   const launchMutation = useMutation({
     mutationFn: () => api.launchApplication(job.id),
-    onSuccess: (data) => {
-      window.open(data.url, "_blank", "noopener,noreferrer");
-      invalidateAfterChange();
-    },
     onError: (err) => push(`Couldn't launch: ${errorMessage(err)}`, "error"),
   });
+
+  const launchAndOpen = (openUrl: string) => {
+    launchMutation.mutate(undefined, {
+      onSuccess: () => {
+        // Hand off job context to the Kiwi Autofill extension (if
+        // installed) so it can give a job-specific cover-letter hint on
+        // the application-form tab. Picked up by extension/content/
+        // kiwi-detect.js; a no-op page-local event when the extension
+        // isn't installed.
+        window.dispatchEvent(
+          new CustomEvent("kiwi-launch-context", {
+            detail: {
+              jobId: job.id,
+              jobTitle: job.title,
+              employer: job.employer,
+              coverLetterGeneratedAt: job.cover_letter_generated_at,
+            },
+          }),
+        );
+        window.open(openUrl, "_blank", "noopener,noreferrer");
+        invalidateAfterChange();
+      },
+    });
+  };
 
   const completeMutation = useMutation({
     mutationFn: (outcome: ApplicationSessionOutcome) =>
@@ -168,8 +220,9 @@ export default function ApplicationKit({
         applied: "Marked as Applied — nice work.",
         not_yet: "No problem — come back and Launch again when you're ready.",
         cancelled: "Application cancelled.",
+        listing_unavailable: "Got it — marked this listing as unavailable. It won't show as Ready anymore.",
       };
-      push(messages[outcome], outcome === "cancelled" ? "info" : "success");
+      push(messages[outcome], outcome === "cancelled" || outcome === "listing_unavailable" ? "info" : "success");
       invalidateAfterChange();
     },
     onError: (err) => push(`Couldn't update: ${errorMessage(err)}`, "error"),
@@ -196,7 +249,7 @@ export default function ApplicationKit({
     );
   }
 
-  const { readiness, active_session } = kit;
+  const { readiness, active_session, listing_url_exact, fallback_link, fallback_is_search } = kit;
   const sectionValues = Object.values(readiness.sections);
   const readyCount = sectionValues.filter(Boolean).length;
   const totalSections = sectionValues.length;
@@ -273,30 +326,101 @@ export default function ApplicationKit({
         ))}
       </Surface>
 
-      {/* Launch — the climax of the preparation workflow */}
-      <Surface tier="primary" className="!border-blue-900/50">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+      {/* Launch — the climax of the preparation workflow, OR an honest
+          "exact listing unavailable" state instead of a broken link. */}
+      {listing_url_exact ? (
+        <Surface tier="primary" className="!border-blue-900/50">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-3">
+              <Rocket className="w-6 h-6 text-blue-400 flex-none mt-0.5" strokeWidth={1.75} />
+              <div>
+                <p className="text-white font-semibold">
+                  {active_session ? "Application in progress" : "Ready to apply"}
+                </p>
+                <p className="text-xs text-gray-500 mt-1 max-w-md">
+                  Kiwi will open the original job listing.{" "}
+                  {extensionDetected
+                    ? "Use Kiwi Autofill on the application form to fill known information, then review and submit it yourself."
+                    : "Fill in the form yourself, review it, and submit it — Kiwi never submits an application for you."}
+                </p>
+                {extensionDetected ? (
+                  <span className="inline-block mt-2">
+                    <Badge tone="success" dot>Kiwi Autofill detected</Badge>
+                  </span>
+                ) : (
+                  <p className="text-xs text-gray-600 mt-2 flex items-center gap-1.5">
+                    <PlugZap className="w-3.5 h-3.5" />
+                    Install the Kiwi Autofill extension for one-click form filling (see extension/README.md).
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => launchAndOpen(job.url)}
+              disabled={launchMutation.isPending}
+              className={`flex-none text-base px-6 py-3 ${buttonClasses("primary")}`}
+            >
+              {launchMutation.isPending ? "Launching…" : active_session ? "Reopen Listing" : "Launch Application"}
+            </button>
+          </div>
+        </Surface>
+      ) : (
+        <Surface tier="primary" className="!border-amber-900/50">
           <div className="flex items-start gap-3">
-            <Rocket className="w-6 h-6 text-blue-400 flex-none mt-0.5" strokeWidth={1.75} />
-            <div>
-              <p className="text-white font-semibold">
-                {active_session ? "Application in progress" : "Ready to open the employer's site?"}
-              </p>
+            <AlertTriangle className="w-6 h-6 text-amber-400 flex-none mt-0.5" strokeWidth={1.75} />
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-semibold">Exact job listing unavailable</p>
               <p className="text-xs text-gray-500 mt-1 max-w-md">
-                Kiwi opens the original job listing in a new tab. You fill in and submit the form yourself
-                — Kiwi never does it for you.
+                Kiwi couldn't confirm this stored link points to the specific listing — opening it as-is
+                could land on a search or category page instead of this job. Here's what Kiwi knows about it:
               </p>
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3 text-sm max-w-md">
+                <div>
+                  <dt className="text-xs text-gray-500 uppercase tracking-wide">Source</dt>
+                  <dd className="text-gray-200">{sourceLabel(job.source)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-gray-500 uppercase tracking-wide">Job Title</dt>
+                  <dd className="text-gray-200">{job.title}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-gray-500 uppercase tracking-wide">Company</dt>
+                  <dd className="text-gray-200">{job.employer}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-gray-500 uppercase tracking-wide">Location</dt>
+                  <dd className="text-gray-200">{job.location}</dd>
+                </div>
+              </dl>
+
+              <div className="flex flex-wrap items-center gap-3 mt-4">
+                {fallback_link && (
+                  <button
+                    onClick={() => launchAndOpen(fallback_link)}
+                    disabled={launchMutation.isPending}
+                    className={buttonClasses("primary")}
+                  >
+                    {launchMutation.isPending
+                      ? "Opening…"
+                      : fallback_is_search
+                        ? `Search on ${sourceLabel(job.source)}`
+                        : `Browse ${sourceLabel(job.source)}`}
+                  </button>
+                )}
+                <a
+                  href={job.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  Open stored link anyway →
+                </a>
+              </div>
             </div>
           </div>
-          <button
-            onClick={() => launchMutation.mutate()}
-            disabled={launchMutation.isPending}
-            className={`flex-none text-base px-6 py-3 ${buttonClasses("primary")}`}
-          >
-            {launchMutation.isPending ? "Launching…" : active_session ? "Reopen Listing" : "Launch Application"}
-          </button>
-        </div>
-      </Surface>
+        </Surface>
+      )}
 
       {/* Session detail */}
       {active_session && (

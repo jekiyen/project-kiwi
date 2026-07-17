@@ -90,6 +90,13 @@ class PickNZScraper(BaseScraper):
             if not slug:
                 return None
 
+            # Defence in depth: never store a card whose link resolves to the
+            # listing-index page itself rather than a specific job.
+            from backend.core.listing_url import is_exact_listing_url
+            if not is_exact_listing_url(self.source_name, url):
+                logger.warning("PickNZ: skipping card with non-listing URL: %s", url)
+                return None
+
             employer_el = row.select_one(".wpjb-column-title .wpjb-sub")
             employer = employer_el.get_text(strip=True) if employer_el else "Unknown"
 

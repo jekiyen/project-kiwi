@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Kiwi Autofill — Sample Application Form (manual QA)</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; }
+    h1 { font-size: 20px; }
+    p.note { color: #555; font-size: 13px; }
+    fieldset { margin-bottom: 20px; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; margin-top: 12px; }
+    input, select, textarea { width: 100%; padding: 8px; font-size: 14px; box-sizing: border-box; }
+    input[type=checkbox] { width: auto; }
+    .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+    .checkbox-row label { margin: 0; }
+    button[type=submit] { margin-top: 20px; padding: 10px 20px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Sample Job Application Form</h1>
+  <p class="note">
+    Manual QA fixture for the Kiwi Autofill extension — not a real job site. Load the unpacked
+    extension, open this file in Chrome, click the Kiwi Autofill icon, then "Fill Application."
+    Expected results are noted next to each field. The Submit button must never be clicked by
+    the extension under any circumstance.
+  </p>
+
+  <form>
+    <fieldset>
+      <legend>Personal — label-based detection (Trade Me / generic employer form pattern)</legend>
+
+      <label for="full_name">Full Name</label>
+      <input type="text" id="full_name" name="full_name" />
+
+      <label for="preferred_name">Preferred Name</label>
+      <input type="text" id="preferred_name" name="preferred_name" />
+
+      <label for="email_addr">Email Address</label>
+      <input type="email" id="email_addr" name="email_addr" autocomplete="email" />
+
+      <label for="phone_num">Phone Number</label>
+      <input type="tel" id="phone_num" name="phone_num" autocomplete="tel" />
+
+      <label for="addr1">Current Address</label>
+      <input type="text" id="addr1" name="addr1" autocomplete="street-address" />
+
+      <label for="city_field">City</label>
+      <input type="text" id="city_field" name="city_field" autocomplete="address-level2" />
+
+      <label for="country_field">Country</label>
+      <input type="text" id="country_field" name="country_field" autocomplete="country-name" />
+
+      <label for="nationality_field">Nationality</label>
+      <input type="text" id="nationality_field" name="nationality_field" />
+    </fieldset>
+
+    <fieldset>
+      <legend>Personal — autocomplete/name-based detection (Indeed pattern, no visible labels)</legend>
+
+      <!-- Indeed-style: relies on name/autocomplete rather than a <label for> -->
+      <input type="text" name="firstName" placeholder="First name" autocomplete="given-name" />
+      <input type="text" name="lastName" placeholder="Last name" autocomplete="family-name" style="margin-top: 8px;" />
+    </fieldset>
+
+    <fieldset>
+      <legend>Work Rights</legend>
+
+      <label for="visa_status_select">Visa Status</label>
+      <select id="visa_status_select" name="visa_status_select">
+        <option value="">Select…</option>
+        <option value="none">None</option>
+        <option value="work_visa">Work Visa</option>
+        <option value="permanent_resident">Permanent Resident</option>
+        <option value="citizen">Citizen</option>
+      </select>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="eligible_nz" name="eligible_nz" />
+        <label for="eligible_nz">I am eligible to work in New Zealand</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="need_sponsor" name="need_sponsor" />
+        <label for="need_sponsor">I require visa sponsorship</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="driver_licence" name="driver_licence" />
+        <label for="driver_licence">I hold a current driver's licence</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="own_vehicle_cb" name="own_vehicle_cb" />
+        <label for="own_vehicle_cb">I have access to my own vehicle</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Professional Links</legend>
+      <label for="linkedin">LinkedIn Profile</label>
+      <input type="url" id="linkedin" name="linkedin" />
+
+      <label for="portfolio">Portfolio</label>
+      <input type="url" id="portfolio" name="portfolio" />
+
+      <label for="github">GitHub</label>
+      <input type="url" id="github" name="github" />
+
+      <label for="website">Personal Website</label>
+      <input type="url" id="website" name="website" />
+    </fieldset>
+
+    <fieldset>
+      <legend>Application Assets — must never be auto-filled (browser security)</legend>
+      <label for="resume_file">Upload Resume / CV</label>
+      <input type="file" id="resume_file" name="resume_file" accept=".pdf,.doc,.docx" />
+
+      <label for="cover_letter_text">Cover Letter</label>
+      <textarea id="cover_letter_text" name="cover_letter_text" rows="4"></textarea>
+    </fieldset>
+
+    <fieldset>
+      <legend>Edge cases</legend>
+
+      <label for="prefilled">Reference Number (pre-filled — must NOT be overwritten)</label>
+      <input type="text" id="prefilled" name="prefilled" value="DO-NOT-OVERWRITE-12345" />
+
+      <label for="favourite_colour">Favourite Colour (should be left completely untouched — "could not map")</label>
+      <input type="text" id="favourite_colour" name="favourite_colour" />
+    </fieldset>
+
+    <button type="submit" onclick="alert('The extension must NEVER trigger this. If you see this alert from a click you did not make, that is a bug.'); return false;">
+      Submit Application
+    </button>
+  </form>
+</body>
+</html>

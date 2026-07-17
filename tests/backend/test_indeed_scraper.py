@@ -213,3 +213,21 @@ def test_multiple_indeed_jobs_all_stored(db_session):
     jobs = [make_scraped(f"abc{i:09d}", f"Job {i}") for i in range(4)]
     new, _, __ = agent._store_scraped_jobs(db_session, jobs)
     assert new == 4
+
+
+# ── Listing URL validation guard ──────────────────────────────────────────────
+
+def test_card_with_non_hex_job_key_is_skipped(scraper):
+    """The constructed URL's jk value must look like a real Indeed job key
+    (hex) — see backend/core/listing_url.py. Defence in depth against a
+    future selector change that captures the wrong attribute."""
+    html = """
+    <div class="job_seen_beacon">
+      <a class="jcs-JobTitle" data-jk="not-a-real-job-key!!!">
+        <span id="jobTitle-x">Some Job</span>
+      </a>
+      <span data-testid="company-name">Some Employer</span>
+    </div>
+    """
+    jobs = scraper._parse_page(html)
+    assert jobs == []

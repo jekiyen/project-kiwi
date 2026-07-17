@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Kiwi Autofill",
+  "version": "0.1.0",
+  "description": "Assisted autofill for job application forms, using your Project Kiwi Application Profile. You always review and submit manually — Kiwi never does either automatically.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:5173/*", "http://127.0.0.1:5173/*"],
+      "js": ["content/kiwi-detect.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "exclude_matches": ["http://localhost:5173/*", "http://127.0.0.1:5173/*"],
+      "js": ["lib/field-mapping.js", "content/content-script.js"],
+      "css": ["content/content-styles.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

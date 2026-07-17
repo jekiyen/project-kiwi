@@ -264,25 +264,38 @@ Not to be confused with Phase 7.6 (also "Job Intelligence" — that phase extrac
 - Fixed while wiring this up: nothing — no regressions found needing a fix this phase.
 - 33 new backend tests (recommendation thresholds, scoring incl. the analysed/fallback paths, reasons incl. malformed-JSON resilience, missing-requirements gap detection, similarity matching/exclusion/limit, all three new endpoints, the new Prompt Engine action) — full suite: 445 passed. Frontend: clean `tsc` + `vite build`. Verified live against the running dev backend across real data (1,435 active jobs): job-intelligence, the bulk summary, similar-jobs, and the good_fit prompt (incl. its Prompt Guard disclaimer) all returned correct, consistent results.
 
-### Phase 10 — Interview Copilot
+### Phase 10 — Application Flow Reliability & Assisted Autofill
+**Status:** Complete
+
+Triggered by real manual testing: clicking Launch Application on some jobs (a Trade Me "Farm Worker - Fixed Term" listing in particular) landed on a generic category/search page instead of the exact job. Two parts — fix the trust gap in the Launch flow, and give the user a real assisted-autofill tool for the manual form-filling step that follows it. **Kiwi still never submits an application automatically anywhere in this milestone.**
+
+- **Root cause audit** (all 6 scrapers): every scraper already extracts a genuine per-listing identifier and rejects cards without one (SEEK `/job/<id>`, Indeed `viewjob?jk=<hex>`, Trade Me `/listing/<id>`, Backpacker `new-zealand-jobsNNNNN.html`, PickNZ/Seasonal trusted permalinks) — there was no "stores a generic URL" bug in the capture logic itself. Cross-checked against the real local database: job 950 (the exact reported Trade Me listing) already stores a well-formed per-listing URL. The actual failure mode is listing **expiration** between scrape time and click time — a third-party page Kiwi cannot detect has gone stale without probing it live, which Kiwi deliberately does not do.
+- **`backend/core/listing_url.py`** — the single deterministic classifier (`is_exact_listing_url`, patterns grounded in real observed URLs, not guessed) added as a defence-in-depth guard inside every scraper's parse step, and used by `GET /jobs/{id}/application-kit` (`listing_url_exact`) so the Application Kit can tell honestly whether Launch will open the real listing.
+- When not exact, Kiwi never silently opens a fabricated or generic URL: the Apply tab shows an **"Exact job listing unavailable"** state instead, with Source / Job Title / Company / Location, a `build_fallback_link()`-derived "Search on {Source}" (or "Browse {Source}" for sources without a working query search) action, and a clearly-labelled "Open stored link anyway" escape hatch — never presented as if it were the application destination.
+- **Expired/removed listings** — the existing Applied / Not Yet / Cancelled manual-completion banner gains a fourth outcome, **Listing Unavailable**, reusing the existing `ApplicationSession`/`ApplicationEvent` architecture rather than inventing new concepts: one new `ApplicationStatus.UNAVAILABLE` enum value (no migration needed — the column has always been plain text), a new `session_listing_unavailable` event type, and exclusion from the Dashboard's Ready/High Match/Applied filters so a dead listing stops surfacing as actionable while staying fully visible in the Applications tracker for history.
+- **Assisted Autofill MVP** (`extension/`) — a Chromium browser extension, architected exactly per the brief: Generic Form Detector → Field Mapping Engine → Kiwi Profile Data → Safe Autofill, with a site-specific-adapter hook stubbed for later. Deterministic keyword/attribute scoring only (no AI, no paid API); the background service worker is the only thing that talks to Kiwi's local (unauthenticated) backend, using MV3 `host_permissions` rather than exposing any credential — there are none to expose. Supports all fields listed in the milestone (Personal, Work Rights, Professional Links) plus resume/cover-letter *detection* (never programmatic file-fill — browsers block that, and Kiwi never stores generated cover letter text in the first place, only that a prompt was prepared — both are documented as explicit, unavoidable limitations in `extension/README.md`). Never fills a field that already has content unless the user explicitly re-runs Fill Application; never touches radio groups or boolean-mapped `<select>`s (flagged for review instead of guessed); never clicks Submit/Send/Confirm/Apply anywhere in the codebase.
+- **Kiwi ↔ extension bridge** — the extension announces its presence on Kiwi's own frontend (`data-kiwi-extension` + a custom event), which the Apply tab uses to adapt its copy ("Kiwi Autofill detected" vs. install instructions) instead of just assuming; Launch also hands off the current job's id/title/cover-letter-generated timestamp so the extension can give a job-specific cover-letter hint on the application-form tab later.
+- 39 new backend tests (listing-url classification for all 6 sources incl. real-shaped exact/category/search URLs, scraper-level rejection guards, the Listing Unavailable outcome incl. timeline/pipeline/history, application-kit's new fields) — full suite: 484 passed. 11 additional pure-function logic checks for the extension's field-mapping engine (label/autocomplete/exclude/boolean/asset/confidence-tier detection) run via Node, since no browser automation tool is available in this environment — see `extension/test-page/sample-form.html` for the manual QA fixture the user should run through Chrome directly. Frontend: clean `tsc` + `vite build`. Verified live against the real local database: confirmed the actual reported job (950) does store an exact URL (supporting the expiration diagnosis over a capture bug) and that `/applications/pipeline` correctly reports `unavailable: 0` with no regressions to existing counts.
+
+### Phase 11 — Interview Copilot
 - Interview preparation workspace once an application reaches the Interview stage
 - Likely-questions and talking-points generation via the existing Prompt Engine (no new AI integration)
 - Interview scheduling/reminders surfaced through existing notifications
 - Post-interview follow-up tracking integrated into the existing Activity timeline
 
-### Phase 11 — Visa Advisor
+### Phase 12 — Visa Advisor
 - Accredited Employer Work Visa pathway guide
 - Working Holiday Visa eligibility checker
 - Document checklist per visa type
 - Timeline estimator for visa processing
 
-### Phase 12 — Cloud Deployment
+### Phase 13 — Cloud Deployment
 - Dockerize all services
 - Deploy to VPS with persistent storage
 - Remote dashboard access (secured)
 - Cloud-scheduled scanning (no local machine required)
 
-### Phase 13 — Settlement Assistant
+### Phase 14 — Settlement Assistant
 - Housing research by NZ region
 - Cost of living calculator
 - Community guides for regions with high seasonal work
