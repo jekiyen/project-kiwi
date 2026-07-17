@@ -8,6 +8,19 @@ import {
 } from "@tanstack/react-query";
 import { Link, NavLink, Route, Routes } from "react-router-dom";
 import {
+  Bell,
+  BellRing,
+  Briefcase,
+  ClipboardList,
+  ExternalLink,
+  FileText,
+  History,
+  IdCard,
+  RefreshCw,
+  Search,
+  Sparkles,
+} from "lucide-react";
+import {
   api,
   type ApplicationReadinessStatus,
   type ApplicationWithJob,
@@ -22,16 +35,18 @@ import {
   RECOMMENDATION_RANK,
   RecommendationBadge,
   SkeletonJobCard,
-  SkeletonStatCard,
   WorkflowBadge,
   computeWorkflowState,
   errorMessage as mutationErrorMessage,
   formatDate,
   formatRelativeTime,
-  priorityColor,
-  scoreColor,
+  priorityBadgeTone,
   sourceLabel,
 } from "./shared";
+import { Badge } from "./design/Badge";
+import { ScoreGauge } from "./design/ScoreGauge";
+import { Surface, SectionLabel } from "./design/Surface";
+import { buttonClasses } from "./design/tokens";
 import ApplicationsPage from "./pages/ApplicationsPage";
 import ApplicationProfilePage from "./pages/ApplicationProfilePage";
 import NotificationsPage from "./pages/NotificationsPage";
@@ -117,16 +132,9 @@ function sortJobs(
 
 function OnlineBadge({ online }: { online: boolean }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
-        online ? "bg-green-900/40 text-green-400" : "bg-red-900/40 text-red-400"
-      }`}
-    >
-      <span
-        className={`w-1.5 h-1.5 rounded-full ${online ? "bg-green-400 animate-pulse" : "bg-red-400"}`}
-      />
+    <Badge tone={online ? "success" : "danger"} dot pulse={online}>
       {online ? "Online" : "Offline"}
-    </span>
+    </Badge>
   );
 }
 
@@ -138,50 +146,27 @@ function NotificationHealthCard() {
   });
 
   const configured = config?.telegram.configured ?? false;
+  const tone = isLoading ? "neutral" : isError ? "danger" : configured ? "success" : "neutral";
+  const label = isLoading ? "Checking…" : isError ? "Unavailable" : configured ? "Healthy" : "Not Configured";
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-      <p className="text-gray-400 text-xs uppercase tracking-wide">Notifications</p>
-      <div className="flex items-center gap-2 mt-1.5">
-        <span
-          className={`w-1.5 h-1.5 rounded-full ${
-            isLoading ? "bg-gray-600" : configured ? "bg-green-400" : "bg-gray-500"
-          }`}
-        />
-        <p className="text-sm text-gray-300">
-          {isLoading ? "Checking…" : isError ? "Unavailable" : "Telegram"}
-          {!isLoading && !isError && (
-            <span className={configured ? "text-green-400" : "text-gray-500"}>
-              {" "}
-              {configured ? "Healthy" : "Not Configured"}
-            </span>
-          )}
-        </p>
+    <Surface className="flex flex-col justify-center">
+      <SectionLabel>Notifications</SectionLabel>
+      <div className="mt-1.5">
+        <Badge tone={tone} dot>
+          {label}
+        </Badge>
       </div>
-    </div>
+    </Surface>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  accent,
-  loading,
-}: {
-  label: string;
-  value: string | number;
-  accent?: string;
-  loading?: boolean;
-}) {
-  return (
-    <div
-      className={`bg-gray-900 border border-gray-800 rounded-xl p-4 transition-opacity ${loading ? "opacity-60" : ""}`}
-    >
-      <p className="text-gray-400 text-xs uppercase tracking-wide">{label}</p>
-      <p className={`text-2xl font-semibold mt-1 ${accent ?? "text-white"}`}>{value}</p>
-    </div>
-  );
-}
+const PIPELINE_ITEMS: { key: "saved" | "applied" | "interview" | "offer"; label: string; tone: "neutral" | "info" | "warning" | "success" }[] = [
+  { key: "saved", label: "Saved", tone: "neutral" },
+  { key: "applied", label: "Applied", tone: "info" },
+  { key: "interview", label: "Interview", tone: "warning" },
+  { key: "offer", label: "Offer", tone: "success" },
+];
 
 function VisaTags({ job }: { job: Job }) {
   const tags = [
@@ -222,6 +207,10 @@ function RelativeTime({
 }
 
 // ── Job card ──────────────────────────────────────────────────────────────────
+// "AI Copilot Feed" — the score/recommendation pairing is the card's visual
+// anchor (what Kiwi thinks of this job); WorkflowBadge (where you are with
+// it) moves down into the action row instead of competing at the header;
+// source/provider demote to a muted metadata line instead of colored pills.
 
 interface JobCardProps {
   job: Job;
@@ -252,22 +241,12 @@ function JobCard({ job, application, readinessStatus, intelligence }: JobCardPro
     application?.active_session_status === "started",
     readinessStatus,
   );
+  const priorityLabel = job.ai_priority && job.ai_priority !== "Reject" ? job.ai_priority : job.role_priority;
+  const priorityTone = priorityBadgeTone(priorityLabel ?? null);
 
   return (
     <article className="group bg-gray-900 border border-gray-800 rounded-xl p-4 flex gap-4 transition-colors hover:border-gray-700 hover:bg-gray-900/80">
-      {/* Score badge */}
-      <div
-        className={`flex-none w-14 h-14 rounded-lg flex flex-col items-center justify-center text-center shrink-0 ${scoreColor(score)}`}
-      >
-        {score !== null ? (
-          <>
-            <span className="text-xl font-bold leading-none">{Math.round(score)}</span>
-            <span className="text-[10px] opacity-70">/100</span>
-          </>
-        ) : (
-          <span className="text-[10px] leading-tight text-center px-1">Unscored</span>
-        )}
-      </div>
+      <ScoreGauge score={score} size="sm" />
 
       {/* Content */}
       <div className="flex-1 min-w-0">
@@ -290,33 +269,20 @@ function JobCard({ job, application, readinessStatus, intelligence }: JobCardPro
                 </>
               )}
             </p>
+            <p className="text-[11px] text-gray-600 mt-1">
+              {sourceLabel(job.source)}
+              {job.ai_provider && job.ai_provider !== "manual" && (
+                <>
+                  <span className="mx-1">·</span>
+                  <span className="capitalize">{job.ai_provider}</span>
+                </>
+              )}
+            </p>
           </div>
 
-          <div className="flex-none flex items-center flex-wrap justify-end gap-1.5 max-w-[45%]">
-            <WorkflowBadge state={workflowState} />
+          <div className="flex-none flex items-center flex-wrap justify-end gap-1.5 max-w-[50%]">
             {intelligence && <RecommendationBadge level={intelligence.recommendation} />}
-            {job.ai_priority && job.ai_priority !== "Reject" && (
-              <span
-                className={`text-xs px-2 py-0.5 rounded font-medium ${priorityColor(job.ai_priority)}`}
-              >
-                {job.ai_priority}
-              </span>
-            )}
-            {!job.ai_priority && job.role_priority && (
-              <span
-                className={`text-xs px-2 py-0.5 rounded font-medium ${priorityColor(job.role_priority)}`}
-              >
-                {job.role_priority}
-              </span>
-            )}
-            <span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-400">
-              {sourceLabel(job.source)}
-            </span>
-            {job.ai_provider && job.ai_provider !== "manual" && (
-              <span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-500 capitalize">
-                {job.ai_provider}
-              </span>
-            )}
+            {priorityLabel && priorityTone && <Badge tone={priorityTone}>{priorityLabel}</Badge>}
           </div>
         </div>
 
@@ -341,24 +307,19 @@ function JobCard({ job, application, readinessStatus, intelligence }: JobCardPro
           </div>
         )}
 
-        {/* Footer: actions + timestamps */}
+        {/* Footer: status + actions + timestamps */}
         <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
           <div className="flex items-center flex-wrap gap-2">
-            <Link
-              to={`/jobs/${job.id}?tab=apply`}
-              className="text-xs px-3 py-1.5 rounded-lg font-medium bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-            >
+            <WorkflowBadge state={workflowState} />
+
+            <Link to={`/jobs/${job.id}?tab=apply`} className={buttonClasses("primary", "sm")}>
               {application ? "View Application" : "Start Application"}
             </Link>
 
             <button
               onClick={() => saveMutation.mutate()}
               disabled={isSaved || saveMutation.isPending}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                isSaved
-                  ? "border-gray-700 text-gray-600 cursor-not-allowed"
-                  : "border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-50"
-              }`}
+              className={buttonClasses("secondary", "sm")}
             >
               {saveMutation.isPending ? "Saving…" : isSaved ? "Saved ✓" : "Save"}
             </button>
@@ -367,17 +328,18 @@ function JobCard({ job, application, readinessStatus, intelligence }: JobCardPro
               href={job.url}
               target="_blank"
               rel="noreferrer"
-              className="text-xs px-3 py-1.5 text-gray-400 hover:text-gray-200 transition-colors"
+              className="inline-flex items-center gap-1 text-xs px-1 py-1.5 text-gray-400 hover:text-gray-200 transition-colors"
             >
-              View listing →
+              View listing <ExternalLink className="w-3 h-3" />
             </a>
 
             {score === null && (
               <button
                 onClick={() => analyseMutation.mutate()}
                 disabled={analyseMutation.isPending}
-                className="text-xs text-violet-400 hover:text-violet-300 disabled:opacity-40 transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 disabled:opacity-40 transition-colors"
               >
+                <Sparkles className="w-3 h-3" />
                 {analyseMutation.isPending ? "Scoring…" : "Score now"}
               </button>
             )}
@@ -403,6 +365,15 @@ function JobCard({ job, application, readinessStatus, intelligence }: JobCardPro
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
+const NAV_ITEMS = [
+  { to: "/", end: true, icon: Briefcase, label: "Jobs" },
+  { to: "/applications", end: false, icon: ClipboardList, label: "Applications" },
+  { to: "/resume", end: false, icon: FileText, label: "Resume" },
+  { to: "/application-profile", end: false, icon: IdCard, label: "Application Profile" },
+  { to: "/scan-history", end: false, icon: History, label: "Scan History" },
+  { to: "/notifications", end: false, icon: Bell, label: "Notifications" },
+] as const;
+
 function Sidebar() {
   const { data: health, isError: healthError } = useQuery({
     queryKey: ["health"],
@@ -424,61 +395,17 @@ function Sidebar() {
       </div>
 
       <nav className="flex-1 p-2 space-y-0.5 mt-1">
-        <NavLink
-          to="/"
-          end
-          className={({ isActive }) =>
-            `${navLink} ${isActive ? activeClass : inactiveClass}`
-          }
-        >
-          <span>💼</span>
-          Jobs
-        </NavLink>
-        <NavLink
-          to="/applications"
-          className={({ isActive }) =>
-            `${navLink} ${isActive ? activeClass : inactiveClass}`
-          }
-        >
-          <span>📋</span>
-          Applications
-        </NavLink>
-        <NavLink
-          to="/resume"
-          className={({ isActive }) =>
-            `${navLink} ${isActive ? activeClass : inactiveClass}`
-          }
-        >
-          <span>📄</span>
-          Resume
-        </NavLink>
-        <NavLink
-          to="/application-profile"
-          className={({ isActive }) =>
-            `${navLink} ${isActive ? activeClass : inactiveClass}`
-          }
-        >
-          <span>🧾</span>
-          Application Profile
-        </NavLink>
-        <NavLink
-          to="/scan-history"
-          className={({ isActive }) =>
-            `${navLink} ${isActive ? activeClass : inactiveClass}`
-          }
-        >
-          <span>📜</span>
-          Scan History
-        </NavLink>
-        <NavLink
-          to="/notifications"
-          className={({ isActive }) =>
-            `${navLink} ${isActive ? activeClass : inactiveClass}`
-          }
-        >
-          <span>🔔</span>
-          Notifications
-        </NavLink>
+        {NAV_ITEMS.map(({ to, end, icon: Icon, label }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            className={({ isActive }) => `${navLink} ${isActive ? activeClass : inactiveClass}`}
+          >
+            <Icon className="w-4 h-4 flex-none" strokeWidth={2} />
+            {label}
+          </NavLink>
+        ))}
       </nav>
 
       <div className="p-4 border-t border-gray-800">
@@ -493,17 +420,13 @@ function Sidebar() {
 function JobsEmptyState({ onScan, scanning }: { onScan: () => void; scanning: boolean }) {
   return (
     <div className="bg-gray-900 border border-gray-800 border-dashed rounded-xl p-10 text-center">
-      <div className="text-4xl mb-3">🔍</div>
+      <Search className="w-9 h-9 text-gray-700 mx-auto mb-3" strokeWidth={1.5} />
       <h3 className="text-white font-medium text-lg">No jobs yet</h3>
       <p className="text-gray-500 text-sm mt-2 max-w-sm mx-auto leading-relaxed">
         Run a scan to discover blue-collar roles across NZ job boards. The system also
         auto-scans every 6 hours.
       </p>
-      <button
-        onClick={onScan}
-        disabled={scanning}
-        className="mt-6 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-lg text-sm font-medium text-white transition-colors"
-      >
+      <button onClick={onScan} disabled={scanning} className={`mt-6 ${buttonClasses("primary")}`}>
         {scanning ? "Scanning…" : "Trigger Scan"}
       </button>
     </div>
@@ -667,38 +590,36 @@ function Dashboard() {
         <div className="h-0.5 bg-blue-600/80 rounded-full mb-4 animate-pulse" />
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      {/* Stats — condensed into three differentiated cards (hero total, a
+          pipeline legend, notification health) instead of six equally-
+          weighted admin KPI tiles. */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         {statsLoading ? (
-          Array.from({ length: 6 }).map((_, i) => <SkeletonStatCard key={i} />)
+          Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-4 h-[72px] animate-pulse" />
+          ))
         ) : (
           <>
-            <StatCard label="Total Jobs" value={jobs.length} loading={jobsFetching} />
-            <StatCard label="Scored" value={scoredJobs.length} loading={jobsFetching} />
-            <StatCard
-              label="Saved"
-              value={pipeline.saved}
-              accent="text-gray-300"
-              loading={jobsFetching}
-            />
-            <StatCard
-              label="Applied"
-              value={pipeline.applied}
-              accent="text-blue-400"
-              loading={jobsFetching}
-            />
-            <StatCard
-              label="Interview"
-              value={pipeline.interview}
-              accent="text-yellow-400"
-              loading={jobsFetching}
-            />
-            <StatCard
-              label="Offer"
-              value={pipeline.offer}
-              accent="text-green-400"
-              loading={jobsFetching}
-            />
+            <Surface tier="primary" className="md:col-span-1">
+              <SectionLabel>Job Discovery</SectionLabel>
+              <p className="text-3xl font-bold text-white mt-1 leading-none">{jobs.length}</p>
+              <p className="text-xs text-gray-500 mt-1.5">{scoredJobs.length} scored</p>
+            </Surface>
+
+            <Surface className="md:col-span-1">
+              <SectionLabel>Pipeline</SectionLabel>
+              <div className="flex items-center gap-4 flex-wrap mt-2">
+                {PIPELINE_ITEMS.map((item) => (
+                  <div key={item.key} className="flex items-baseline gap-1.5">
+                    <span className="text-lg font-semibold text-white leading-none">
+                      {pipeline[item.key]}
+                    </span>
+                    <span className="text-xs text-gray-500">{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </Surface>
+
             <NotificationHealthCard />
           </>
         )}
@@ -709,22 +630,25 @@ function Dashboard() {
         <button
           onClick={() => scanMutation.mutate()}
           disabled={scanMutation.isPending}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-lg text-sm font-medium transition-colors"
+          className={buttonClasses("primary")}
         >
+          <RefreshCw className={`w-4 h-4 ${scanMutation.isPending ? "animate-spin" : ""}`} />
           {scanMutation.isPending ? "Scanning…" : "Trigger Scan"}
         </button>
         <button
           onClick={() => analyseMutation.mutate()}
           disabled={analyseMutation.isPending}
-          className="px-4 py-2 bg-violet-700 hover:bg-violet-600 disabled:opacity-40 rounded-lg text-sm font-medium transition-colors"
+          className={buttonClasses("secondary")}
         >
+          <Sparkles className="w-4 h-4" />
           {analyseMutation.isPending ? "Scoring…" : "Score Unscored Jobs"}
         </button>
         <button
           onClick={() => testMutation.mutate()}
           disabled={testMutation.isPending}
-          className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-40 rounded-lg text-sm font-medium transition-colors"
+          className={buttonClasses("subtle")}
         >
+          <BellRing className="w-4 h-4" />
           {testMutation.isPending ? "Sending…" : "Test Notification"}
         </button>
       </div>
@@ -761,7 +685,7 @@ function Dashboard() {
                 onClick={() => setFilter(opt.value)}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   filter === opt.value
-                    ? "bg-gray-700 text-white"
+                    ? "bg-blue-600 text-white"
                     : "bg-gray-900 text-gray-400 border border-gray-800 hover:text-gray-200 hover:border-gray-700"
                 }`}
               >

@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ChevronRight, History } from "lucide-react";
 import { api, type Scan, type ScraperRun } from "../api/client";
 import { ErrorBanner, formatDate, formatRelativeTime, sourceLabel } from "../shared";
+import { Badge } from "../design/Badge";
+import type { Tone } from "../design/tokens";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -15,43 +18,33 @@ function formatDuration(ms: number | null): string {
   return `${m}m ${rem}s`;
 }
 
-// ── Status badges ─────────────────────────────────────────────────────────────
+// ── Status badges — shared Badge primitive, tokens shared with the rest of the app ─
 
-const SCAN_STATUS_CONFIG = {
-  completed: { label: "Completed", cls: "bg-green-900/40 text-green-400 ring-1 ring-green-800/50" },
-  running:   { label: "Running",   cls: "bg-yellow-900/40 text-yellow-400 ring-1 ring-yellow-800/50" },
-  failed:    { label: "Failed",    cls: "bg-red-900/40 text-red-400 ring-1 ring-red-800/50" },
-} as const;
+const SCAN_STATUS_TONE: Record<string, Tone> = {
+  completed: "success",
+  running: "warning",
+  failed: "danger",
+};
 
-const SCRAPER_STATUS_CONFIG = {
-  success: { dot: "bg-green-400",  label: "Success",  cls: "bg-green-900/30 text-green-400" },
-  partial: { dot: "bg-yellow-400", label: "Partial",  cls: "bg-yellow-900/30 text-yellow-400" },
-  failed:  { dot: "bg-red-400",    label: "Failed",   cls: "bg-red-900/30 text-red-400" },
-} as const;
+const SCRAPER_STATUS_TONE: Record<string, Tone> = {
+  success: "success",
+  partial: "warning",
+  failed: "danger",
+};
 
 function ScanStatusBadge({ status }: { status: string }) {
-  const cfg = SCAN_STATUS_CONFIG[status as keyof typeof SCAN_STATUS_CONFIG] ?? {
-    label: status,
-    cls: "bg-gray-800 text-gray-400",
-  };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${cfg.cls}`}>
-      {cfg.label}
-    </span>
+    <Badge tone={SCAN_STATUS_TONE[status] ?? "neutral"} className="capitalize">
+      {status}
+    </Badge>
   );
 }
 
 function ScraperStatusBadge({ status }: { status: string }) {
-  const cfg = SCRAPER_STATUS_CONFIG[status as keyof typeof SCRAPER_STATUS_CONFIG] ?? {
-    dot: "bg-gray-400",
-    label: status,
-    cls: "bg-gray-800 text-gray-400",
-  };
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${cfg.cls}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-      {cfg.label}
-    </span>
+    <Badge tone={SCRAPER_STATUS_TONE[status] ?? "neutral"} dot className="capitalize">
+      {status}
+    </Badge>
   );
 }
 
@@ -133,11 +126,9 @@ function ScanCard({ scan }: { scan: Scan }) {
 
         {/* Expand chevron */}
         {hasRuns && (
-          <span
-            className={`flex-none text-gray-600 text-sm transition-transform ${expanded ? "rotate-90" : ""}`}
-          >
-            ▶
-          </span>
+          <ChevronRight
+            className={`flex-none w-4 h-4 text-gray-600 transition-transform ${expanded ? "rotate-90" : ""}`}
+          />
         )}
       </button>
 
@@ -242,9 +233,10 @@ export default function ScanHistoryPage() {
       </header>
 
       {running.length > 0 && (
-        <div className="mb-4 flex items-center gap-2 text-yellow-400 text-sm">
-          <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-          {running.length === 1 ? "A scan is running…" : `${running.length} scans running…`}
+        <div className="mb-4">
+          <Badge tone="warning" dot pulse>
+            {running.length === 1 ? "A scan is running…" : `${running.length} scans running…`}
+          </Badge>
         </div>
       )}
 
@@ -262,7 +254,7 @@ export default function ScanHistoryPage() {
         />
       ) : scans.length === 0 ? (
         <div className="bg-gray-900 border border-gray-800 border-dashed rounded-xl p-10 text-center">
-          <div className="text-4xl mb-3">📜</div>
+          <History className="w-9 h-9 text-gray-700 mx-auto mb-3" strokeWidth={1.5} />
           <p className="text-gray-400 font-medium">No scan history yet</p>
           <p className="text-gray-600 text-sm mt-1">
             Trigger a scan from the Jobs page to see activity here.

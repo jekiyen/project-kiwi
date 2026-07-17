@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileText, Trash2, UploadCloud } from "lucide-react";
 import { api, type Resume } from "../api/client";
 import { useToast } from "../hooks/useToast";
 import { ErrorBanner, errorMessage, formatDate } from "../shared";
+import { Badge } from "../design/Badge";
+import { Surface, SectionLabel } from "../design/Surface";
+import { buttonClasses } from "../design/tokens";
+
+// "Career Asset Vault" — each resume gets a document-type visual identity
+// (a colored file-type tile) instead of pure text metadata, the Active
+// resume gets a stronger accent treatment, and actions are ordered by
+// hierarchy (Preview/Set Active primary, Rename/Replace secondary, Delete
+// visually separated as an icon-only destructive action).
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -12,12 +22,27 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function FileTypeTile({ fileType }: { fileType: "pdf" | "docx" }) {
+  const isPdf = fileType === "pdf";
+  return (
+    <div
+      className={`flex-none w-14 h-14 rounded-lg flex flex-col items-center justify-center gap-0.5 ${
+        isPdf ? "bg-red-900/30 text-red-300" : "bg-blue-900/30 text-blue-300"
+      }`}
+    >
+      <FileText className="w-5 h-5" strokeWidth={1.75} />
+      <span className="text-[10px] font-semibold uppercase tracking-wide">{fileType}</span>
+    </div>
+  );
+}
+
 // ── Upload form ───────────────────────────────────────────────────────────────
 
 function UploadForm({ onUploaded }: { onUploaded: (resume: Resume) => void }) {
   const qc = useQueryClient();
   const { push } = useToast();
   const [filename, setFilename] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadMutation = useMutation({
@@ -33,9 +58,9 @@ function UploadForm({ onUploaded }: { onUploaded: (resume: Resume) => void }) {
   });
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-      <h3 className="text-white font-medium mb-3">Upload Resume</h3>
-      <div className="flex flex-wrap gap-3 items-end">
+    <Surface>
+      <SectionLabel className="mb-3">Upload Resume</SectionLabel>
+      <div className="flex flex-wrap gap-3 items-end mb-3">
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
             Name (optional)
@@ -48,23 +73,42 @@ function UploadForm({ onUploaded }: { onUploaded: (resume: Resume) => void }) {
             className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500 transition-colors"
           />
         </div>
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) uploadMutation.mutate(file);
-            }}
-            disabled={uploadMutation.isPending}
-            className="text-sm text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-600 file:text-white hover:file:bg-blue-500 file:cursor-pointer file:transition-colors disabled:opacity-50"
-          />
-        </div>
       </div>
-      {uploadMutation.isPending && <p className="text-xs text-gray-500 mt-3">Uploading…</p>}
-      <p className="text-xs text-gray-600 mt-3">PDF or DOCX, up to 10MB.</p>
-    </div>
+
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) uploadMutation.mutate(file);
+        }}
+        className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center cursor-pointer transition-colors ${
+          dragOver ? "border-blue-500 bg-blue-950/20" : "border-gray-700 hover:border-gray-600"
+        } ${uploadMutation.isPending ? "opacity-50 pointer-events-none" : ""}`}
+      >
+        <UploadCloud className="w-6 h-6 text-gray-500" strokeWidth={1.5} />
+        <p className="text-sm text-gray-400">
+          {uploadMutation.isPending ? "Uploading…" : "Drop a file here, or click to browse"}
+        </p>
+        <p className="text-xs text-gray-600">PDF or DOCX, up to 10MB.</p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.docx"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) uploadMutation.mutate(file);
+          }}
+          disabled={uploadMutation.isPending}
+          className="hidden"
+        />
+      </label>
+    </Surface>
   );
 }
 
@@ -89,100 +133,97 @@ function ResumeCard({ resume, featured, onActivate, onDelete, onRename, onReplac
 
   return (
     <div
-      className={`bg-gray-900 border rounded-lg p-5 ${
-        featured ? "border-green-800/60" : "border-gray-800"
+      className={`rounded-xl p-5 flex gap-4 ${
+        featured
+          ? "bg-gray-900 border border-emerald-800/50 ring-1 ring-emerald-900/20"
+          : "bg-gray-900 border border-gray-800"
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          {renaming ? (
-            <input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={() => {
-                setRenaming(false);
-                if (name.trim() && name !== resume.filename) onRename(name.trim());
-              }}
-              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white focus:outline-none focus:border-blue-500"
-            />
-          ) : (
-            <h3 className="text-white font-medium text-lg truncate">{resume.filename}</h3>
+      <FileTypeTile fileType={resume.file_type} />
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            {renaming ? (
+              <input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onBlur={() => {
+                  setRenaming(false);
+                  if (name.trim() && name !== resume.filename) onRename(name.trim());
+                }}
+                onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white focus:outline-none focus:border-blue-500"
+              />
+            ) : (
+              <h3 className="text-white font-medium text-lg truncate">{resume.filename}</h3>
+            )}
+            <p className="text-gray-500 text-xs truncate mt-0.5">{resume.original_filename}</p>
+          </div>
+          {resume.is_active && (
+            <Badge tone="success" dot className="flex-none">
+              Active
+            </Badge>
           )}
-          <p className="text-gray-500 text-xs truncate mt-0.5">{resume.original_filename}</p>
         </div>
-        {resume.is_active && (
-          <span className="flex-none inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-green-900/50 text-green-300 ring-1 ring-green-800/50">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-            Active
+
+        <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
+          <span>
+            Uploaded: <span className="text-gray-400">{formatDate(resume.uploaded_at)}</span>
           </span>
-        )}
-      </div>
+          <span>
+            Size: <span className="text-gray-400">{formatFileSize(resume.file_size)}</span>
+          </span>
+        </div>
 
-      <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
-        <span>
-          Uploaded: <span className="text-gray-400">{formatDate(resume.uploaded_at)}</span>
-        </span>
-        <span>
-          Size: <span className="text-gray-400">{formatFileSize(resume.file_size)}</span>
-        </span>
-        <span className="uppercase text-gray-600">{resume.file_type}</span>
-      </div>
-
-      <div className="flex items-center gap-2 mt-4 flex-wrap">
-        <a
-          href={api.resumePreviewUrl(resume.id)}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
-        >
-          Preview
-        </a>
-        <a
-          href={api.resumeDownloadUrl(resume.id)}
-          className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
-        >
-          Download
-        </a>
-        <button
-          onClick={() => replaceInputRef.current?.click()}
-          disabled={replacing}
-          className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors disabled:opacity-50"
-        >
-          {replacing ? "Replacing…" : "Replace"}
-        </button>
-        <input
-          ref={replaceInputRef}
-          type="file"
-          accept=".pdf,.docx"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onReplace(file);
-            e.target.value = "";
-          }}
-        />
-        {!resume.is_active && (
-          <button
-            onClick={onActivate}
-            className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+        <div className="flex items-center gap-2 mt-4 flex-wrap">
+          <a
+            href={api.resumePreviewUrl(resume.id)}
+            target="_blank"
+            rel="noreferrer"
+            className={buttonClasses("secondary", "sm")}
           >
-            Set Active
+            Preview
+          </a>
+          {!resume.is_active && (
+            <button onClick={onActivate} className={buttonClasses("primary", "sm")}>
+              Set Active
+            </button>
+          )}
+          <a href={api.resumeDownloadUrl(resume.id)} className={buttonClasses("subtle", "sm")}>
+            Download
+          </a>
+          <button
+            onClick={() => replaceInputRef.current?.click()}
+            disabled={replacing}
+            className={buttonClasses("subtle", "sm")}
+          >
+            {replacing ? "Replacing…" : "Replace"}
           </button>
-        )}
-        <button
-          onClick={() => setRenaming(true)}
-          className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
-        >
-          Rename
-        </button>
-        <button
-          onClick={onDelete}
-          className="text-xs px-3 py-1.5 rounded-lg text-gray-500 hover:text-red-400 transition-colors ml-auto"
-        >
-          Delete
-        </button>
+          <input
+            ref={replaceInputRef}
+            type="file"
+            accept=".pdf,.docx"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onReplace(file);
+              e.target.value = "";
+            }}
+          />
+          <button onClick={() => setRenaming(true)} className={buttonClasses("subtle", "sm")}>
+            Rename
+          </button>
+          <button
+            onClick={onDelete}
+            className="ml-auto text-gray-600 hover:text-red-400 transition-colors p-1.5"
+            title="Delete resume"
+            aria-label="Delete resume"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

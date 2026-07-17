@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { CheckCircle2, Circle, HelpCircle, Rocket } from "lucide-react";
 import {
   api,
   type ApplicationSessionOutcome,
@@ -8,6 +9,9 @@ import {
 } from "../api/client";
 import { useToast } from "../hooks/useToast";
 import { errorMessage, formatDate, formatRelativeTime } from "../shared";
+import { ScoreGauge, ProgressBar } from "../design/ScoreGauge";
+import { Surface, SectionLabel } from "../design/Surface";
+import { buttonClasses, scoreTone } from "../design/tokens";
 
 // The Application Kit — Kiwi assists, the user submits. Launch only ever
 // opens the employer's original job URL in a new tab; Kiwi never fills in
@@ -15,6 +19,11 @@ import { errorMessage, formatDate, formatRelativeTime } from "../shared";
 // from the single Application Readiness Engine (backend/core/
 // application_readiness.py) via GET /jobs/{id}/application-kit — nothing is
 // re-derived on the frontend. See docs/ROADMAP.md Phase 8.
+//
+// "Application Launch" — this is meant to be one of the most crafted
+// screens in Kiwi: readiness visualized as a gauge + progress bar, the
+// section checklist as a clear scannable list, and Launch treated as the
+// climax of the preparation workflow rather than another card footer.
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return "less than a minute";
@@ -83,12 +92,14 @@ function SectionRow({
   job: Job;
   onGoToWorkspace: () => void;
 }) {
+  const Icon = ready ? CheckCircle2 : Circle;
   return (
     <div className="flex items-start justify-between gap-3 py-2.5 border-b border-gray-800 last:border-0">
       <div className="flex items-start gap-2.5 min-w-0">
-        <span className={`mt-0.5 text-sm leading-none ${ready ? "text-emerald-400" : "text-gray-600"}`}>
-          {ready ? "✓" : "○"}
-        </span>
+        <Icon
+          className={`w-4 h-4 flex-none mt-0.5 ${ready ? "text-emerald-400" : "text-gray-600"}`}
+          strokeWidth={2}
+        />
         <div className="min-w-0">
           <p className="text-sm text-gray-200 font-medium">{config.label}</p>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -98,17 +109,11 @@ function SectionRow({
       </div>
       {!ready &&
         (config.action.to === "workspace" ? (
-          <button
-            onClick={onGoToWorkspace}
-            className="flex-none text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
-          >
+          <button onClick={onGoToWorkspace} className={`flex-none ${buttonClasses("secondary", "sm")}`}>
             {config.action.label}
           </button>
         ) : (
-          <Link
-            to={config.action.to}
-            className="flex-none text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
-          >
+          <Link to={config.action.to} className={`flex-none ${buttonClasses("secondary", "sm")}`}>
             {config.action.label}
           </Link>
         ))}
@@ -184,10 +189,7 @@ export default function ApplicationKit({
       <div className="bg-red-950/30 border border-red-900/50 rounded-xl p-6 text-center">
         <p className="text-red-400 font-medium">Couldn't load the Application Kit</p>
         <p className="text-gray-500 text-sm mt-1">{errorMessage(error)}</p>
-        <button
-          onClick={() => refetch()}
-          className="mt-4 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-medium text-gray-200 transition-colors"
-        >
+        <button onClick={() => refetch()} className={`mt-4 ${buttonClasses("secondary")}`}>
           Retry
         </button>
       </div>
@@ -195,23 +197,25 @@ export default function ApplicationKit({
   }
 
   const { readiness, active_session } = kit;
-  const scoreColorCls =
-    readiness.score >= 80
-      ? "text-emerald-400"
-      : readiness.score >= 50
-        ? "text-amber-400"
-        : "text-red-400";
+  const sectionValues = Object.values(readiness.sections);
+  const readyCount = sectionValues.filter(Boolean).length;
+  const totalSections = sectionValues.length;
 
   return (
     <div className="space-y-5">
       {/* Manual completion banner — shown whenever a launched session is awaiting an outcome */}
       {active_session && (
-        <div className="bg-blue-950/30 border border-blue-900/50 rounded-xl p-5">
-          <p className="text-white font-medium">Did you successfully submit this application?</p>
-          <p className="text-xs text-gray-400 mt-1">
-            Launched {formatRelativeTime(active_session.started_at)} · Kiwi never submits anything on
-            its own — you tell it what happened.
-          </p>
+        <Surface tier="primary" className="!border-blue-800/60 bg-blue-950/20">
+          <div className="flex items-start gap-3">
+            <HelpCircle className="w-5 h-5 text-blue-400 flex-none mt-0.5" />
+            <div>
+              <p className="text-white font-medium">Did you successfully submit this application?</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Launched {formatRelativeTime(active_session.started_at)} · Kiwi never submits anything on
+                its own — you tell it what happened.
+              </p>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2 mt-4">
             {OUTCOME_BUTTONS.map((b) => (
               <button
@@ -226,42 +230,38 @@ export default function ApplicationKit({
               </button>
             ))}
           </div>
-        </div>
+        </Surface>
       )}
 
-      {/* Readiness overview */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Application Readiness Score
-            </p>
-            <p className={`text-3xl font-bold mt-1 ${scoreColorCls}`}>{readiness.score}%</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Estimated Completion Time
-            </p>
-            <p className="text-lg font-medium text-gray-200 mt-1">~{readiness.estimated_minutes} min</p>
+      {/* Readiness overview — the gauge + progress bar visualization */}
+      <Surface>
+        <div className="flex items-start gap-5 flex-wrap">
+          <ScoreGauge score={readiness.score} size="lg" caption="Readiness" />
+          <div className="flex-1 min-w-[200px]">
+            <div className="flex items-center justify-between gap-3">
+              <SectionLabel>{readyCount} of {totalSections} ready</SectionLabel>
+              <span className="text-xs text-gray-500">~{readiness.estimated_minutes} min to finish prep</span>
+            </div>
+            <ProgressBar value={readyCount} max={totalSections} tone={scoreTone(readiness.score)} className="mt-2" />
+
+            {readiness.missing.length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Missing Information
+                </p>
+                <ul className="text-sm text-gray-300 space-y-1">
+                  {readiness.missing.map((m) => (
+                    <li key={m}>• {m} missing</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
-
-        {readiness.missing.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-800">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Missing Information
-            </p>
-            <ul className="text-sm text-gray-300 space-y-1">
-              {readiness.missing.map((m) => (
-                <li key={m}>• {m} missing</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+      </Surface>
 
       {/* Section checklist */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <Surface>
         {SECTION_CONFIG.map((config) => (
           <SectionRow
             key={config.key}
@@ -271,34 +271,37 @@ export default function ApplicationKit({
             onGoToWorkspace={onGoToWorkspace}
           />
         ))}
-      </div>
+      </Surface>
 
-      {/* Launch */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <p className="text-white font-medium">
-            {active_session ? "Application in progress" : "Ready to open the employer's site?"}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">
-            Kiwi opens the original job listing in a new tab. You fill in and submit the form yourself
-            — Kiwi never does it for you.
-          </p>
+      {/* Launch — the climax of the preparation workflow */}
+      <Surface tier="primary" className="!border-blue-900/50">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-3">
+            <Rocket className="w-6 h-6 text-blue-400 flex-none mt-0.5" strokeWidth={1.75} />
+            <div>
+              <p className="text-white font-semibold">
+                {active_session ? "Application in progress" : "Ready to open the employer's site?"}
+              </p>
+              <p className="text-xs text-gray-500 mt-1 max-w-md">
+                Kiwi opens the original job listing in a new tab. You fill in and submit the form yourself
+                — Kiwi never does it for you.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => launchMutation.mutate()}
+            disabled={launchMutation.isPending}
+            className={`flex-none text-base px-6 py-3 ${buttonClasses("primary")}`}
+          >
+            {launchMutation.isPending ? "Launching…" : active_session ? "Reopen Listing" : "Launch Application"}
+          </button>
         </div>
-        <button
-          onClick={() => launchMutation.mutate()}
-          disabled={launchMutation.isPending}
-          className="flex-none text-sm px-5 py-2.5 rounded-lg font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
-        >
-          {launchMutation.isPending ? "Launching…" : active_session ? "Reopen Listing" : "Launch Application"}
-        </button>
-      </div>
+      </Surface>
 
       {/* Session detail */}
       {active_session && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            Application Session
-          </p>
+        <Surface>
+          <SectionLabel className="mb-3">Application Session</SectionLabel>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide">Started</p>
@@ -321,7 +324,7 @@ export default function ApplicationKit({
               <p className="text-gray-200 mt-0.5 truncate">{active_session.resume_version ?? "—"}</p>
             </div>
           </div>
-        </div>
+        </Surface>
       )}
     </div>
   );

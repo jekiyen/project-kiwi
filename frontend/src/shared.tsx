@@ -1,5 +1,8 @@
+import { AlertTriangle } from "lucide-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import type { ApplicationReadinessStatus, ApplicationStatus, RecommendationLevel } from "./api/client";
+import { Badge } from "./design/Badge";
+import { buttonClasses, type Tone } from "./design/tokens";
 
 // Backend serializes naive UTC datetimes with no timezone designator
 // (e.g. "2026-07-10T06:33:02"). JS Date parses that as local time, so
@@ -66,28 +69,25 @@ export function sourceLabel(source: string): string {
   return labels[source.toLowerCase()] ?? source.charAt(0).toUpperCase() + source.slice(1);
 }
 
-export function scoreColor(score: number | null): string {
-  if (score === null) return "bg-gray-800/80 text-gray-500 border border-dashed border-gray-700";
-  if (score >= 70) return "bg-green-900/50 text-green-300 ring-1 ring-green-800/50";
-  if (score >= 40) return "bg-yellow-900/50 text-yellow-300 ring-1 ring-yellow-800/50";
-  return "bg-red-900/50 text-red-300 ring-1 ring-red-800/50";
+/** The one 0-100 score → tone mapping used by ScoreGauge and anywhere a raw
+ * score needs a text/accent color without the full gauge (see design/tokens.ts). */
+export { scoreTone } from "./design/tokens";
+
+export function priorityBadgeTone(p: string | null): Tone | null {
+  if (p === "P1") return "info";
+  if (p === "P2") return "brand";
+  if (p === "P3") return "neutral";
+  return null;
 }
 
-export function priorityColor(p: string | null): string {
-  if (p === "P1") return "bg-blue-900/50 text-blue-300";
-  if (p === "P2") return "bg-purple-900/50 text-purple-300";
-  if (p === "P3") return "bg-gray-700 text-gray-300";
-  return "hidden";
-}
-
-export const APP_STATUS_COLORS: Record<ApplicationStatus, string> = {
-  saved: "bg-gray-700 text-gray-300",
-  applied: "bg-blue-900/50 text-blue-300",
-  interview: "bg-yellow-900/50 text-yellow-300",
-  offer: "bg-green-900/50 text-green-300",
-  visa: "bg-emerald-900/50 text-emerald-300",
-  rejected: "bg-red-900/50 text-red-400",
-  archived: "bg-gray-800 text-gray-500",
+export const APP_STATUS_TONE: Record<ApplicationStatus, Tone> = {
+  saved: "neutral",
+  applied: "info",
+  interview: "warning",
+  offer: "success",
+  visa: "success",
+  rejected: "danger",
+  archived: "neutral",
 };
 
 export const APP_STATUS_LABELS: Record<ApplicationStatus, string> = {
@@ -111,13 +111,7 @@ export const ALL_STATUSES: ApplicationStatus[] = [
 ];
 
 export function AppStatusBadge({ status }: { status: ApplicationStatus }) {
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${APP_STATUS_COLORS[status]}`}
-    >
-      {APP_STATUS_LABELS[status]}
-    </span>
-  );
+  return <Badge tone={APP_STATUS_TONE[status]}>{APP_STATUS_LABELS[status]}</Badge>;
 }
 
 // ── Application Copilot workflow state (Phase 8) ────────────────────────────
@@ -140,19 +134,15 @@ export function computeWorkflowState(
   return readinessStatus === "ready" ? "ready" : "preparing";
 }
 
-const WORKFLOW_STATE_CONFIG: Record<"ready" | "preparing", { label: string; cls: string }> = {
-  ready: { label: "Ready", cls: "bg-emerald-900/50 text-emerald-300" },
-  preparing: { label: "Preparing", cls: "bg-amber-900/50 text-amber-300" },
+const WORKFLOW_STATE_CONFIG: Record<"ready" | "preparing", { label: string; tone: Tone }> = {
+  ready: { label: "Ready", tone: "success" },
+  preparing: { label: "Preparing", tone: "warning" },
 };
 
 export function WorkflowBadge({ state }: { state: WorkflowState }) {
   if (state === "ready" || state === "preparing") {
     const cfg = WORKFLOW_STATE_CONFIG[state];
-    return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cfg.cls}`}>
-        {cfg.label}
-      </span>
-    );
+    return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
   }
   return <AppStatusBadge status={state} />;
 }
@@ -161,11 +151,11 @@ export function WorkflowBadge({ state }: { state: WorkflowState }) {
 // Recommendation levels come from a single deterministic evaluator
 // (backend/core/job_intelligence.py) — this is presentation only.
 
-export const RECOMMENDATION_CONFIG: Record<RecommendationLevel, { label: string; cls: string }> = {
-  highly_recommended: { label: "Highly Recommended", cls: "bg-emerald-900/50 text-emerald-300" },
-  recommended: { label: "Recommended", cls: "bg-blue-900/50 text-blue-300" },
-  consider: { label: "Consider", cls: "bg-amber-900/50 text-amber-300" },
-  low_priority: { label: "Low Priority", cls: "bg-gray-800 text-gray-500" },
+export const RECOMMENDATION_CONFIG: Record<RecommendationLevel, { label: string; tone: Tone }> = {
+  highly_recommended: { label: "Highly Recommended", tone: "success" },
+  recommended: { label: "Recommended", tone: "info" },
+  consider: { label: "Consider", tone: "warning" },
+  low_priority: { label: "Low Priority", tone: "neutral" },
 };
 
 // Lower rank = higher priority — used to sort the Priority Queue.
@@ -178,20 +168,7 @@ export const RECOMMENDATION_RANK: Record<RecommendationLevel, number> = {
 
 export function RecommendationBadge({ level }: { level: RecommendationLevel }) {
   const cfg = RECOMMENDATION_CONFIG[level];
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cfg.cls}`}>
-      {cfg.label}
-    </span>
-  );
-}
-
-export function SkeletonStatCard() {
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 animate-pulse">
-      <div className="h-3 bg-gray-800 rounded w-16" />
-      <div className="h-7 bg-gray-800 rounded w-10 mt-2" />
-    </div>
-  );
+  return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
 }
 
 export function SkeletonJobCard() {
@@ -237,10 +214,7 @@ export function ErrorBanner({
       <p className="text-red-400 font-medium">{title}</p>
       {message && <p className="text-gray-500 text-sm mt-1">{message}</p>}
       {onRetry && (
-        <button
-          onClick={onRetry}
-          className="mt-4 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-medium text-gray-200 transition-colors"
-        >
+        <button onClick={onRetry} className={`mt-4 ${buttonClasses("secondary")}`}>
           Retry
         </button>
       )}
@@ -272,16 +246,13 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-950 p-6">
         <div className="max-w-md w-full bg-gray-900 border border-red-900/50 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">⚠️</div>
+          <AlertTriangle className="w-10 h-10 text-red-400 mx-auto mb-3" strokeWidth={1.5} />
           <h1 className="text-white font-semibold text-lg">Something went wrong</h1>
           <p className="text-gray-500 text-sm mt-2 leading-relaxed">
             The dashboard hit an unexpected error. Reloading usually fixes it — if it keeps
             happening, check the browser console for details.
           </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-5 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium text-white transition-colors"
-          >
+          <button onClick={() => window.location.reload()} className={`mt-5 ${buttonClasses("primary")}`}>
             Reload
           </button>
         </div>

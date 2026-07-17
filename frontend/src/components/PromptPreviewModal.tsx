@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { AlertTriangle, X } from "lucide-react";
 import { useToast } from "../hooks/useToast";
+import { buttonClasses } from "../design/tokens";
 
 const CLAUDE_NEW_CHAT_URL = "https://claude.ai/new";
 
@@ -54,18 +56,18 @@ export default function PromptPreviewModal({ title, content, disclaimer, onClose
           <h2 className="text-white font-medium">{title}</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-300 transition-colors text-lg leading-none"
+            className="text-gray-500 hover:text-gray-300 transition-colors"
             aria-label="Close"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {disclaimer && (
-            <div className="flex items-start gap-2 bg-yellow-950/30 border border-yellow-900/50 rounded-lg px-3 py-2 mb-4">
-              <span className="text-yellow-500 text-sm leading-none mt-0.5">⚠</span>
-              <p className="text-yellow-200/90 text-xs leading-relaxed">{disclaimer}</p>
+            <div className="flex items-start gap-2 bg-amber-950/30 border border-amber-900/50 rounded-lg px-3 py-2 mb-4">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-none mt-0.5" />
+              <p className="text-amber-200/90 text-xs leading-relaxed">{disclaimer}</p>
             </div>
           )}
           <pre className="whitespace-pre-wrap break-words text-sm text-gray-300 font-sans leading-relaxed">
@@ -74,22 +76,13 @@ export default function PromptPreviewModal({ title, content, disclaimer, onClose
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-800">
-          <button
-            onClick={onClose}
-            className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors"
-          >
+          <button onClick={onClose} className={buttonClasses("subtle", "sm")}>
             Cancel
           </button>
-          <button
-            onClick={handleCopy}
-            className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
-          >
+          <button onClick={handleCopy} className={buttonClasses("secondary", "sm")}>
             {copied ? "Copied ✓" : "Copy Prompt"}
           </button>
-          <button
-            onClick={handleOpenClaude}
-            className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
-          >
+          <button onClick={handleOpenClaude} className={buttonClasses("primary", "sm")}>
             Open Claude →
           </button>
         </div>

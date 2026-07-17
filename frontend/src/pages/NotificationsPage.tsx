@@ -2,27 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useToast } from "../hooks/useToast";
 import { errorMessage } from "../shared";
-
-function StatusBadge({ ok, onLabel, offLabel }: { ok: boolean; onLabel: string; offLabel: string }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium ${
-        ok
-          ? "bg-green-900/50 text-green-300 ring-1 ring-green-800/50"
-          : "bg-gray-800 text-gray-400 ring-1 ring-gray-700"
-      }`}
-    >
-      <span className={`w-1.5 h-1.5 rounded-full ${ok ? "bg-green-400" : "bg-gray-500"}`} />
-      {ok ? onLabel : offLabel}
-    </span>
-  );
-}
+import { Badge } from "../design/Badge";
+import { Surface, SectionLabel } from "../design/Surface";
+import { buttonClasses } from "../design/tokens";
 
 function StatusRow({ label, ok, onLabel, offLabel }: { label: string; ok: boolean; onLabel: string; offLabel: string }) {
   return (
     <div className="flex items-center justify-between py-1.5">
       <span className="text-sm text-gray-400">{label}</span>
-      <StatusBadge ok={ok} onLabel={onLabel} offLabel={offLabel} />
+      <Badge tone={ok ? "success" : "neutral"} dot>
+        {ok ? onLabel : offLabel}
+      </Badge>
     </div>
   );
 }
@@ -84,7 +74,7 @@ export default function NotificationsPage() {
         </p>
       </div>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+      <Surface>
         <div className="flex items-center justify-between gap-3 mb-1">
           <h3 className="text-white font-medium">Telegram</h3>
           {isLoading ? (
@@ -92,7 +82,9 @@ export default function NotificationsPage() {
           ) : isError ? (
             <span className="text-xs text-red-400">Couldn't load status</span>
           ) : (
-            <StatusBadge ok={configured} onLabel="Configured" offLabel="Not Configured" />
+            <Badge tone={configured ? "success" : "neutral"} dot>
+              {configured ? "Configured" : "Not Configured"}
+            </Badge>
           )}
         </div>
 
@@ -112,11 +104,7 @@ export default function NotificationsPage() {
             onClick={() => detectMutation.mutate()}
             disabled={!botTokenPresent || detectMutation.isPending}
             title={!botTokenPresent ? "Set TELEGRAM_BOT_TOKEN in .env first" : undefined}
-            className={`text-sm px-4 py-2 rounded-lg font-medium transition-colors border ${
-              !botTokenPresent
-                ? "border-gray-800 text-gray-600 cursor-not-allowed"
-                : "border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 disabled:opacity-50"
-            }`}
+            className={buttonClasses("secondary")}
           >
             {detectMutation.isPending ? "Detecting…" : "Detect Chat ID"}
           </button>
@@ -125,11 +113,7 @@ export default function NotificationsPage() {
             onClick={() => testMutation.mutate()}
             disabled={!configured || testMutation.isPending}
             title={!configured ? "Configure Telegram in .env first" : undefined}
-            className={`text-sm px-4 py-2 rounded-lg font-medium transition-colors ${
-              !configured
-                ? "bg-blue-900/20 text-blue-400/40 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
-            }`}
+            className={buttonClasses("primary")}
           >
             {testMutation.isPending ? "Sending…" : "Test Notification"}
           </button>
@@ -166,10 +150,10 @@ export default function NotificationsPage() {
             )}
           </div>
         )}
-      </div>
+      </Surface>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-5 mt-4">
-        <h3 className="text-white font-medium mb-3">Events</h3>
+      <Surface className="mt-4">
+        <SectionLabel className="mb-3">Events</SectionLabel>
         <ul className="space-y-2.5">
           {EVENTS.map((e) => (
             <li key={e.label} className="flex flex-col sm:flex-row sm:items-baseline sm:gap-3">
@@ -178,7 +162,7 @@ export default function NotificationsPage() {
             </li>
           ))}
         </ul>
-      </div>
+      </Surface>
     </div>
   );
 }

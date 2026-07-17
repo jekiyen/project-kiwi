@@ -287,3 +287,42 @@ Not to be confused with Phase 7.6 (also "Job Intelligence" — that phase extrac
 - Cost of living calculator
 - Community guides for regions with high seasonal work
 - Family relocation planning checklist
+
+---
+
+## Design System & UI Polish
+**Status:** Complete (A–I)
+
+A cross-cutting, presentation-only workstream — not a sequential functional phase, and deliberately not numbered as one. It touches screens spanning Phases 4–9 in a single pass and changes **zero** backend logic, APIs, routes, database models, scoring logic, scraping logic, or AI workflows. Every mutation, query, and workflow behaves exactly as it did before; only how it looks changed. Tracked as **A–I** (letters, not decimals) specifically so it reads as a parallel workstream rather than "the next phase."
+
+Preceded by a full UI/UX audit (info hierarchy, layout density, navigation, typography, spacing, card hierarchy, button hierarchy, badge/status system, match-score visualization, AI-insight presentation, readiness visualization, empty/loading/error states, cross-page consistency, portfolio screenshot potential) covering all 7 key flows plus Scan History and Notifications. The audit's headline finding: the dark visual "bones" (`bg-gray-900`/`border-gray-800`/`rounded-xl` cards) were already consistent — the gaps were fragmented badge implementations, emoji-as-icon-system, uniform card weight with no visual hierarchy, and zero data-visualization despite match score/readiness being the product's core value proposition.
+
+#### A. Global Design Foundation
+- `frontend/src/design/` — the new design system: `tokens.ts` (a `Tone` type — success/info/warning/danger/neutral/brand — mapping to the exact Tailwind colors already in use, plus `scoreTone()` and `buttonClasses()`), `Badge.tsx` (one primitive replacing six independent badge implementations: `AppStatusBadge`, `WorkflowBadge`, `RecommendationBadge`, Scan History's status pills, and Notifications' local status pill), `ScoreGauge.tsx` (a radial score gauge + linear `ProgressBar`, the first data-visualization in the app), `Button.tsx`/`buttonClasses()` (primary/secondary/subtle/destructive hierarchy), `Surface.tsx` (`primary`/`secondary` card-tier convention + shared `SectionLabel` eyebrow).
+- `tailwind.config.js` gained a `brand` color token (the same blue already used everywhere, now named instead of hardcoded).
+- `lucide-react` added as the one icon set, replacing emoji throughout (sidebar nav, AI Workspace action tiles, empty states, timeline events, readiness indicators, toasts' error state).
+
+#### B. Job Discovery — "AI Copilot Feed"
+Job cards now lead with `ScoreGauge` + `RecommendationBadge` as the visual anchor; `WorkflowBadge` moved out of the header (where it competed with Recommendation) into the action row, reframed as "where you are with this job" rather than "how good is it"; source/provider demoted to a muted metadata line. The six equally-weighted admin KPI tiles became three differentiated cards (a primary "Job Discovery" hero total, a compact Pipeline legend, Notification health). Filter chips and the Priority Queue sort (from Phase 9) restyled onto the shared tokens.
+
+#### C. Job Detail / Job Intelligence — "The Decision Screen"
+New `DecisionHeader` puts Match Score (gauge), Recommendation, Confidence, and the top reason above the fold, in a `primary`-tier `Surface` — reusing the same `jobIntelligence` query `JobIntelligenceCard` already fetches (react-query dedupes by key, zero extra requests). "Why This Job" and "Missing Requirements" — previously two identical plain bullet lists — now get opposite visual treatments (emerald check-circles vs. amber dashed-circles). Original Description and Activity tabs visually de-emphasized (muted label color) without changing the tab architecture. Zero changes to AI Summary fallback logic, readiness, or Prompt Guard behavior.
+
+#### D. AI Workspace — "AI Toolkit"
+Action tile emoji replaced by a per-action-id icon lookup (frontend-only — `actions.json`'s `icon` field is untouched, still config-driven). The AI Readiness card's 🟢🟡🔴 unified onto the shared `Badge` tone language. One deterministic "Suggested" highlight added to the Cover Letter tile when `Job.cover_letter_generated_at` is unset (existing Phase 8 data, no new logic). Prompt Preview → Copy Prompt → Open Claude workflow untouched.
+
+#### E. Apply / Application Kit — "Application Launch"
+The most crafted screen in the app by design. Score/time stat block replaced by `ScoreGauge(lg)` + a "*N* of *5* ready" `ProgressBar`; checklist icons upgraded from bare `✓`/`○` characters to `CheckCircle2`/`Circle`; Launch promoted into a `primary`-tier `Surface` with a `Rocket` icon and larger CTA — the visual climax of the page. The manual-completion banner keeps its exact Applied/Not Yet/Cancelled behavior; Kiwi still never implies automatic submission anywhere in the copy or design.
+
+#### F. Applications / Application Tracker — "Application Journey"
+Status badge + separate `<select>` merged into one control (a tone-colored `<select>` styled as the badge itself — still a native, fully accessible select). `ScoreGauge(sm)` added to each card, matching Job Discovery so the same job reads identically across both screens. Notes/dates/document versions moved behind a "Show details" progressive-disclosure toggle (a one-line notes preview stays visible even collapsed, so nothing already filled in disappears silently). New `PipelineSummary` at the top of the page, powered by the pre-existing (previously unused by the frontend) `GET /applications/pipeline` endpoint.
+
+#### G. Resume Vault + Application Profile
+**Resume Vault ("Career Asset Vault"):** each resume gets a color-coded file-type tile (PDF/DOCX) instead of pure text metadata; the Active resume gets a stronger emerald accent via `Surface`; actions reordered by hierarchy (Preview/Set Active primary, Rename/Replace secondary, Delete an icon-only destructive action); the upload zone restyled as a real drop target (added functional drag-and-drop onto the existing upload mutation — no new upload path, same validation, same endpoint).
+**Application Profile ("Application Readiness Foundation"):** a new completeness meter (`ScoreGauge` + `ProgressBar`, computed client-side from six section checks already available on the page — full name/email/phone, work rights, professional links, active resume, references, emergency contact) ties the page back into the same readiness language used in the Application Kit, without duplicating `backend/core/application_readiness.py`'s per-job rules. Personal Information/Work Rights and Professional Links/Emergency Contact now sit side by side on wider viewports to cut scroll length; Work Rights checkboxes gained icons (Globe/Handshake/IdCard/Car) and a selected-state highlight.
+
+#### H. Supporting Screens
+Scan History and Notifications adopted the shared `Badge` primitive and tokens (status pills, running-scan indicator) and lucide icons (`History`, `ChevronRight`) in place of emoji — no structural change, as planned.
+
+#### I. Final Cross-Product Visual QA
+Full backend suite (445 tests) and `tsc && vite build` re-run clean after every lettered section, not just at the end. Repo-wide grep confirmed no leftover references to the six replaced badge implementations and no remaining pictographic emoji in the UI. Icon-only destructive buttons (Resume Vault, Applications) got explicit `aria-label`s alongside their existing `title`s. No backend file was touched in this entire workstream.

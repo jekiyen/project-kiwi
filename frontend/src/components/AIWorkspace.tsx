@@ -1,9 +1,23 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import {
+  DollarSign,
+  FileText,
+  Mail,
+  Mic,
+  PenLine,
+  Search,
+  Sparkles,
+  Target,
+  type LucideIcon,
+} from "lucide-react";
 import { api, type AIReadiness, type AIReadinessStatus, type Job, type PatchJobBody } from "../api/client";
 import { useToast } from "../hooks/useToast";
 import { errorMessage } from "../shared";
+import { Badge } from "../design/Badge";
+import { Surface, SectionLabel } from "../design/Surface";
+import { buttonClasses, type Tone } from "../design/tokens";
 import PromptPreviewModal from "./PromptPreviewModal";
 
 // The AI Workspace is the foundation every future AI-assisted workflow in
@@ -22,16 +36,38 @@ import PromptPreviewModal from "./PromptPreviewModal";
 function WorkspaceSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{title}</h3>
+      <SectionLabel className="mb-3">{title}</SectionLabel>
       {children}
     </section>
   );
 }
 
-const READINESS_CONFIG: Record<AIReadinessStatus, { label: string; icon: string; cls: string }> = {
-  ready: { label: "Ready", icon: "🟢", cls: "text-green-400" },
-  partial: { label: "Partial", icon: "🟡", cls: "text-yellow-400" },
-  not_ready: { label: "Not Ready", icon: "🔴", cls: "text-red-400" },
+const READINESS_TONE: Record<AIReadinessStatus, Tone> = {
+  ready: "success",
+  partial: "warning",
+  not_ready: "danger",
+};
+
+const READINESS_LABEL: Record<AIReadinessStatus, string> = {
+  ready: "Ready",
+  partial: "Partial",
+  not_ready: "Not Ready",
+};
+
+// A prompt action's icon is chosen here on the frontend rather than trusting
+// the emoji string the backend's actions.json config returns — Kiwi's
+// registry stays config-driven (no code change needed to add an action),
+// but the UI's icon language stays a single consistent set. Unmapped ids
+// (e.g. a brand-new action) fall back to a generic sparkle rather than
+// breaking.
+const ACTION_ICONS: Record<string, LucideIcon> = {
+  good_fit: Target,
+  resume_analysis: Search,
+  resume_improvement: PenLine,
+  cover_letter: FileText,
+  interview: Mic,
+  recruiter_message: Mail,
+  salary_negotiation: DollarSign,
 };
 
 // ── Inline Edit Job form ─────────────────────────────────────────────────────
@@ -120,18 +156,14 @@ function EditJobForm({ job, onDone }: { job: Job; onDone: () => void }) {
         />
       </div>
       <div className="flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={saveMutation.isPending}
-          className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium transition-colors"
-        >
+        <button type="submit" disabled={saveMutation.isPending} className={buttonClasses("primary", "sm")}>
           {saveMutation.isPending ? "Saving…" : "Save"}
         </button>
         <button
           type="button"
           onClick={onDone}
           disabled={saveMutation.isPending}
-          className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors"
+          className={buttonClasses("secondary", "sm")}
         >
           Cancel
         </button>
@@ -144,18 +176,16 @@ function EditJobForm({ job, onDone }: { job: Job; onDone: () => void }) {
 
 function AIReadinessCard({ job, readiness }: { job: Job; readiness: AIReadiness }) {
   const [editing, setEditing] = useState(false);
-  const cfg = READINESS_CONFIG[readiness.status];
   const needsResume = readiness.missing.includes("Active Resume");
   const needsJobFields = readiness.missing.some((m) => m !== "Active Resume");
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+    <Surface className="p-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">AI Readiness</p>
-        <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${cfg.cls}`}>
-          <span>{cfg.icon}</span>
-          {cfg.label}
-        </span>
+        <SectionLabel>AI Readiness</SectionLabel>
+        <Badge tone={READINESS_TONE[readiness.status]} dot>
+          {READINESS_LABEL[readiness.status]}
+        </Badge>
       </div>
 
       {readiness.missing.length > 0 && (
@@ -174,18 +204,12 @@ function AIReadinessCard({ job, readiness }: { job: Job; readiness: AIReadiness 
       {(needsJobFields || needsResume) && !editing && (
         <div className="flex items-center gap-2 mt-3">
           {needsJobFields && (
-            <button
-              onClick={() => setEditing(true)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
-            >
+            <button onClick={() => setEditing(true)} className={buttonClasses("primary", "sm")}>
               Edit Job
             </button>
           )}
           {needsResume && (
-            <Link
-              to="/resume"
-              className="text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
-            >
+            <Link to="/resume" className={buttonClasses("secondary", "sm")}>
               Go to Resume Vault
             </Link>
           )}
@@ -193,36 +217,47 @@ function AIReadinessCard({ job, readiness }: { job: Job; readiness: AIReadiness 
       )}
 
       {editing && <EditJobForm job={job} onDone={() => setEditing(false)} />}
-    </div>
+    </Surface>
   );
 }
 
 // ── Action tiles ─────────────────────────────────────────────────────────────
 
 function ActionTile({
-  icon,
+  icon: Icon,
   label,
   description,
   onClick,
   loading,
   disabled,
+  recommended,
 }: {
-  icon: string;
+  icon: LucideIcon;
   label: string;
   description: string;
   onClick: () => void;
   loading: boolean;
   disabled: boolean;
+  recommended?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled || loading}
       title={disabled ? "Resolve the missing items above before generating this prompt" : undefined}
-      className="text-left bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-600 hover:bg-gray-900/80 transition-colors disabled:opacity-40 disabled:hover:border-gray-800 disabled:hover:bg-gray-900 disabled:cursor-not-allowed"
+      className={`relative text-left bg-gray-900 rounded-xl p-4 transition-colors disabled:opacity-40 disabled:hover:border-gray-800 disabled:cursor-not-allowed ${
+        recommended
+          ? "border border-blue-800/60 hover:border-blue-600 ring-1 ring-blue-900/30"
+          : "border border-gray-800 hover:border-gray-600 hover:bg-gray-900/80"
+      }`}
     >
+      {recommended && (
+        <span className="absolute top-3 right-3">
+          <Badge tone="info">Suggested</Badge>
+        </span>
+      )}
       <div className="flex items-start gap-3">
-        <span className="text-xl leading-none">{icon}</span>
+        <Icon className="w-5 h-5 text-gray-400 flex-none mt-0.5" strokeWidth={1.75} />
         <div className="min-w-0">
           <p className="text-white text-sm font-medium">{label}</p>
           <p className="text-gray-500 text-xs mt-1 leading-relaxed">{description}</p>
@@ -262,6 +297,11 @@ export default function AIWorkspace({ job }: { job: Job }) {
   });
 
   const notReady = readiness?.status === "not_ready";
+  // The one deterministic "what's next" signal Kiwi already tracks: a cover
+  // letter prompt that hasn't been generated for this job yet (Phase 8's
+  // Job.cover_letter_generated_at). No new AI logic — just surfacing
+  // existing state as a suggestion.
+  const suggestedActionId = !job.cover_letter_generated_at ? "cover_letter" : null;
 
   const handleActionClick = async (actionId: string) => {
     if (notReady) return;
@@ -301,12 +341,13 @@ export default function AIWorkspace({ job }: { job: Job }) {
             {actions.map((action) => (
               <ActionTile
                 key={action.id}
-                icon={action.icon}
+                icon={ACTION_ICONS[action.id] ?? Sparkles}
                 label={action.label}
                 description={action.description}
                 onClick={() => handleActionClick(action.id)}
                 loading={activeActionId === action.id}
                 disabled={notReady || readinessLoading}
+                recommended={action.id === suggestedActionId}
               />
             ))}
           </div>

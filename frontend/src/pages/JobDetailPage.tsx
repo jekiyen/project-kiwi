@@ -1,22 +1,38 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Info,
+  Pencil,
+  Play,
+  RefreshCw,
+  Rocket,
+  Search,
+  Sparkles,
+  XCircle,
+} from "lucide-react";
 import { api, type ApplicationEvent, type Job, type JobChange, type JobSummary } from "../api/client";
 import AIWorkspace from "../components/AIWorkspace";
 import ApplicationKit from "../components/ApplicationKit";
 import JobIntelligenceCard from "../components/JobIntelligenceCard";
 import { useToast } from "../hooks/useToast";
-import { ErrorBanner, errorMessage, formatDate, formatRelativeTime, scoreColor, sourceLabel } from "../shared";
+import { ErrorBanner, errorMessage, formatDate, formatRelativeTime, sourceLabel } from "../shared";
+import { RecommendationBadge } from "../shared";
+import { ScoreGauge } from "../design/ScoreGauge";
+import { Surface, SectionLabel } from "../design/Surface";
+import { buttonClasses } from "../design/tokens";
 
 type Tab = "overview" | "ai_summary" | "original" | "workspace" | "apply" | "activity";
 
-const TABS: { id: Tab; label: string }[] = [
+const TABS: { id: Tab; label: string; secondary?: boolean }[] = [
   { id: "overview", label: "Overview" },
   { id: "ai_summary", label: "AI Summary" },
-  { id: "original", label: "Original Description" },
+  { id: "original", label: "Original Description", secondary: true },
   { id: "workspace", label: "AI Workspace" },
   { id: "apply", label: "Apply" },
-  { id: "activity", label: "Activity" },
+  { id: "activity", label: "Activity", secondary: true },
 ];
 
 const VALID_TABS = new Set<Tab>(TABS.map((t) => t.id));
@@ -54,7 +70,7 @@ function ViewListingLink({ job }: { job: Job }) {
 function SummaryFallbackNotice() {
   return (
     <div className="flex items-start gap-2 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2 mb-4">
-      <span className="text-gray-500 text-sm leading-none mt-0.5">ⓘ</span>
+      <Info className="w-4 h-4 text-gray-500 flex-none mt-0.5" />
       <p className="text-gray-400 text-xs leading-relaxed">
         No structured summary available — showing the original description instead.
       </p>
@@ -65,14 +81,14 @@ function SummaryFallbackNotice() {
 function BulletCard({ label, items }: { label: string; items: string[] }) {
   if (items.length === 0) return null;
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{label}</p>
+    <Surface>
+      <SectionLabel className="mb-3">{label}</SectionLabel>
       <ul className="text-sm text-gray-300 space-y-1.5 leading-relaxed">
         {items.map((item, i) => (
           <li key={i}>• {item}</li>
         ))}
       </ul>
-    </div>
+    </Surface>
   );
 }
 
@@ -107,7 +123,7 @@ function OriginalDescriptionCard({ job }: { job: Job }) {
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <Surface>
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-400">
           <span>{sourceLabel(job.source)}</span>
@@ -121,10 +137,7 @@ function OriginalDescriptionCard({ job }: { job: Job }) {
           <span>Found {formatRelativeTime(job.first_seen_at)}</span>
         </div>
         {hasDescription && (
-          <button
-            onClick={handleCopy}
-            className="flex-none text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
-          >
+          <button onClick={handleCopy} className={buttonClasses("secondary", "sm")}>
             Copy
           </button>
         )}
@@ -152,7 +165,7 @@ function OriginalDescriptionCard({ job }: { job: Job }) {
       ) : (
         <p className="text-gray-500 text-sm italic">No description available for this job.</p>
       )}
-    </div>
+    </Surface>
   );
 }
 
@@ -177,8 +190,8 @@ function OverviewTab({
 
   return (
     <div className="space-y-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Quick Facts</p>
+      <Surface>
+        <SectionLabel className="mb-3">Quick Facts</SectionLabel>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <Fact label="Job Title" value={job.title} />
           <Fact label="Company" value={job.employer} />
@@ -187,7 +200,7 @@ function OverviewTab({
           <Fact label="Salary" value={salary} />
           {summary?.visa_notes && <Fact label="Visa Status" value={summary.visa_notes} />}
         </div>
-      </div>
+      </Surface>
 
       {isError || !summary || isSummaryEmpty(summary) ? (
         <>
@@ -195,14 +208,14 @@ function OverviewTab({
           <OriginalDescriptionCard job={job} />
         </>
       ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Overview</p>
+        <Surface>
+          <SectionLabel className="mb-2">Overview</SectionLabel>
           {summary.overview ? (
             <p className="text-gray-300 text-sm leading-relaxed">{summary.overview}</p>
           ) : (
             <p className="text-gray-500 text-sm italic">No overview could be extracted.</p>
           )}
-        </div>
+        </Surface>
       )}
 
       <JobIntelligenceCard job={job} />
@@ -260,11 +273,14 @@ function AISummaryTab({
       <BulletCard label="Benefits" items={summary.benefits} />
       <BulletCard label="Work Environment" items={summary.work_environment} />
       {summary.warnings.length > 0 && (
-        <div className="bg-yellow-950/30 border border-yellow-900/50 rounded-xl p-5">
-          <p className="text-xs font-semibold text-yellow-500/80 uppercase tracking-wide mb-3">Warnings</p>
-          <ul className="text-sm text-yellow-200/90 space-y-1.5 leading-relaxed">
+        <div className="bg-amber-950/30 border border-amber-900/50 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-500/80" />
+            <p className="text-xs font-semibold text-amber-500/80 uppercase tracking-wide">Warnings</p>
+          </div>
+          <ul className="text-sm text-amber-200/90 space-y-1.5 leading-relaxed">
             {summary.warnings.map((w, i) => (
-              <li key={i}>⚠ {w}</li>
+              <li key={i}>• {w}</li>
             ))}
           </ul>
         </div>
@@ -293,11 +309,11 @@ type TimelineEntry =
   | { kind: "change"; at: string; change: JobChange }
   | { kind: "session"; at: string; event: ApplicationEvent };
 
-const SESSION_EVENT_LABELS: Record<string, { icon: string; title: string }> = {
-  session_started: { icon: "🚀", title: "Application started" },
-  session_resumed: { icon: "▶️", title: "Application resumed" },
-  session_completed: { icon: "✅", title: "Application completed" },
-  session_cancelled: { icon: "✖️", title: "Application cancelled" },
+const SESSION_EVENT_LABELS: Record<string, { icon: typeof Rocket; title: string }> = {
+  session_started: { icon: Rocket, title: "Application started" },
+  session_resumed: { icon: Play, title: "Application resumed" },
+  session_completed: { icon: CheckCircle2, title: "Application completed" },
+  session_cancelled: { icon: XCircle, title: "Application cancelled" },
 };
 
 function buildTimeline(job: Job, changes: JobChange[], events: ApplicationEvent[]): TimelineEntry[] {
@@ -325,26 +341,26 @@ function buildTimeline(job: Job, changes: JobChange[], events: ApplicationEvent[
 }
 
 function TimelineRow({ entry }: { entry: TimelineEntry }) {
-  let icon = "•";
+  let Icon = Info;
   let title = "";
   let detail: string | null = null;
 
   switch (entry.kind) {
     case "discovered":
-      icon = "🔍";
+      Icon = Search;
       title = "Job discovered";
       break;
     case "rescanned":
-      icon = "🔁";
+      Icon = RefreshCw;
       title = "Seen again in a scan";
       break;
     case "analysed":
-      icon = "✨";
+      Icon = Sparkles;
       title = "AI analysis completed";
       detail = entry.score !== null ? `Match score: ${Math.round(entry.score)}/100` : null;
       break;
     case "change": {
-      icon = "✏️";
+      Icon = Pencil;
       const field = entry.change.field_changed.replace(/_/g, " ");
       title = `${field.charAt(0).toUpperCase()}${field.slice(1)} changed`;
       detail = `${entry.change.old_value ?? "—"} → ${entry.change.new_value ?? "—"}`;
@@ -352,7 +368,7 @@ function TimelineRow({ entry }: { entry: TimelineEntry }) {
     }
     case "session": {
       const cfg = SESSION_EVENT_LABELS[entry.event.event_type];
-      icon = cfg.icon;
+      Icon = cfg.icon;
       title = cfg.title;
       detail = entry.event.detail;
       break;
@@ -363,14 +379,14 @@ function TimelineRow({ entry }: { entry: TimelineEntry }) {
     <li className="bg-gray-900 border border-gray-800 rounded-xl p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-gray-200 font-medium flex items-center gap-2">
-          <span>{icon}</span>
+          <Icon className="w-3.5 h-3.5 text-gray-500 flex-none" />
           {title}
         </p>
         <span className="text-xs text-gray-600" title={formatDate(entry.at)}>
           {formatRelativeTime(entry.at)}
         </span>
       </div>
-      {detail && <p className="text-xs text-gray-500 mt-1 ml-6">{detail}</p>}
+      {detail && <p className="text-xs text-gray-500 mt-1 ml-[22px]">{detail}</p>}
     </li>
   );
 }
@@ -422,6 +438,48 @@ function ActivityTab({ job }: { job: Job }) {
         <TimelineRow key={i} entry={entry} />
       ))}
     </ul>
+  );
+}
+
+// ── Decision header — "the decision screen": Match Score, Recommendation,
+// Confidence, and the primary reason all above the fold, before any tab
+// content. Reuses the same Job Intelligence query JobIntelligenceCard
+// renders further down (react-query dedupes by key — no extra request).
+
+function DecisionHeader({ job, jobId }: { job: Job; jobId: number }) {
+  const { data: intelligence, isLoading } = useQuery({
+    queryKey: ["jobIntelligence", jobId],
+    queryFn: () => api.jobIntelligence(jobId),
+    enabled: Number.isFinite(jobId),
+  });
+
+  return (
+    <Surface tier="primary" className="mt-4 mb-6">
+      <div className="flex items-start gap-4">
+        <ScoreGauge score={job.ai_match_score} size="md" caption="Match" />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-semibold text-white leading-snug">{job.title}</h1>
+          <p className="text-gray-400 text-sm mt-1">
+            {job.employer}
+            <span className="text-gray-600 mx-1.5">·</span>
+            {job.location}
+          </p>
+          <div className="flex items-center gap-2 flex-wrap mt-2.5">
+            {isLoading ? (
+              <div className="h-5 w-32 bg-gray-800 rounded animate-pulse" />
+            ) : intelligence ? (
+              <>
+                <RecommendationBadge level={intelligence.recommendation} />
+                <span className="text-xs text-gray-500">{intelligence.confidence}% confidence</span>
+              </>
+            ) : null}
+          </div>
+          {!isLoading && intelligence?.reasons[0] && (
+            <p className="text-sm text-gray-300 mt-2.5 leading-relaxed">{intelligence.reasons[0]}</p>
+          )}
+        </div>
+      </div>
+    </Surface>
   );
 }
 
@@ -502,28 +560,7 @@ export default function JobDetailPage() {
         ← Back to Jobs
       </Link>
 
-      <header className="mt-4 mb-6 flex items-start gap-4">
-        <div
-          className={`flex-none w-14 h-14 rounded-lg flex flex-col items-center justify-center text-center shrink-0 ${scoreColor(job.ai_match_score)}`}
-        >
-          {job.ai_match_score !== null ? (
-            <>
-              <span className="text-xl font-bold leading-none">{Math.round(job.ai_match_score)}</span>
-              <span className="text-[10px] opacity-70">/100</span>
-            </>
-          ) : (
-            <span className="text-[10px] leading-tight text-center px-1">Unscored</span>
-          )}
-        </div>
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-white leading-snug">{job.title}</h1>
-          <p className="text-gray-400 text-sm mt-1">
-            {job.employer}
-            <span className="text-gray-600 mx-1.5">·</span>
-            {job.location}
-          </p>
-        </div>
-      </header>
+      <DecisionHeader job={job} jobId={jobId} />
 
       <div className="border-b border-gray-800 mb-6">
         <nav className="flex gap-1 overflow-x-auto">
@@ -534,7 +571,9 @@ export default function JobDetailPage() {
               className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
                 tab === t.id
                   ? "border-blue-500 text-white"
-                  : "border-transparent text-gray-500 hover:text-gray-300"
+                  : t.secondary
+                    ? "border-transparent text-gray-600 hover:text-gray-400"
+                    : "border-transparent text-gray-500 hover:text-gray-300"
               }`}
             >
               {t.label}

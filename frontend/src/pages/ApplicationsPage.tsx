@@ -1,17 +1,27 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { api, type ApplicationWithJob, type ApplicationStatus, type ApplicationEvent } from "../api/client";
 import { useToast } from "../hooks/useToast";
 import {
-  AppStatusBadge,
   APP_STATUS_LABELS,
+  APP_STATUS_TONE,
   ALL_STATUSES,
   ErrorBanner,
   errorMessage,
   formatDate,
   formatRelativeTime,
-  scoreColor,
 } from "../shared";
+import { ScoreGauge } from "../design/ScoreGauge";
+import { Surface, SectionLabel } from "../design/Surface";
+import { TONE_FILL_CLASSES } from "../design/tokens";
+
+// "Application Journey" — status is the hero (a single colored control, not
+// a badge sitting next to a redundant plain <select>), editable detail
+// (notes/dates/versions) is tucked behind progressive disclosure so the
+// default view reads as a journey card rather than an editable data-table
+// row, and the score gauge matches the one used on the Jobs page so the
+// same job reads consistently across both screens.
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
@@ -59,14 +69,56 @@ function Timeline({ applicationId }: { applicationId: number }) {
   );
 }
 
-// ── Status filter tabs ─────────────────────────────────────────────────────────
+// ── Status control — a single colored control instead of a badge + select ───
 
-type FilterStatus = ApplicationStatus | "all";
+function StatusSelect({
+  status,
+  onChange,
+}: {
+  status: ApplicationStatus;
+  onChange: (status: string) => void;
+}) {
+  return (
+    <select
+      value={status}
+      onChange={(e) => onChange(e.target.value)}
+      className={`text-xs font-medium rounded px-2 py-1 border-0 focus:outline-none focus:ring-2 focus:ring-white/20 cursor-pointer ${TONE_FILL_CLASSES[APP_STATUS_TONE[status]]}`}
+    >
+      {ALL_STATUSES.map((s) => (
+        <option key={s} value={s} className="bg-gray-900 text-gray-200">
+          {APP_STATUS_LABELS[s]}
+        </option>
+      ))}
+    </select>
+  );
+}
 
-const TABS: { value: FilterStatus; label: string }[] = [
-  { value: "all", label: "All" },
-  ...ALL_STATUSES.map((s) => ({ value: s as FilterStatus, label: APP_STATUS_LABELS[s] })),
-];
+// ── Pipeline summary strip ──────────────────────────────────────────────────
+
+const PIPELINE_STAGES: ApplicationStatus[] = ["saved", "applied", "interview", "offer", "rejected"];
+
+function PipelineSummary() {
+  const { data: pipeline } = useQuery({
+    queryKey: ["applicationsPipeline"],
+    queryFn: api.pipeline,
+  });
+
+  if (!pipeline) return null;
+
+  return (
+    <Surface className="mb-5">
+      <SectionLabel className="mb-2">Pipeline</SectionLabel>
+      <div className="flex items-center gap-5 flex-wrap">
+        {PIPELINE_STAGES.map((stage) => (
+          <div key={stage} className="flex items-baseline gap-1.5">
+            <span className="text-lg font-semibold text-white leading-none">{pipeline[stage]}</span>
+            <span className="text-xs text-gray-500">{APP_STATUS_LABELS[stage]}</span>
+          </div>
+        ))}
+      </div>
+    </Surface>
+  );
+}
 
 // ── Application card ───────────────────────────────────────────────────────────
 
@@ -87,6 +139,7 @@ function AppCard({ app, onPatch, onDelete, isSaving }: AppCardProps) {
   );
   const [resumeVersion, setResumeVersion] = useState(app.resume_version ?? "");
   const [coverLetterVersion, setCoverLetterVersion] = useState(app.cover_letter_version ?? "");
+  const [showDetails, setShowDetails] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
 
   // Sync local state when server data refreshes
@@ -105,175 +158,189 @@ function AppCard({ app, onPatch, onDelete, isSaving }: AppCardProps) {
     [app.cover_letter_version]
   );
 
+  const hasDetails = !!(app.notes || app.interview_date || app.follow_up_date || app.resume_version || app.cover_letter_version);
+
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-white font-medium truncate">{app.job_title}</h3>
-          <p className="text-gray-400 text-sm">
-            {app.job_employer} · {app.job_location}
-          </p>
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex gap-4">
+      <ScoreGauge score={app.job_ai_match_score} size="sm" />
+
+      <div className="flex-1 min-w-0">
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-white font-medium truncate">{app.job_title}</h3>
+            <p className="text-gray-400 text-sm">
+              {app.job_employer} · {app.job_location}
+            </p>
+          </div>
+          <div className="flex-none flex items-center gap-2">
+            <StatusSelect status={app.status} onChange={(status) => onPatch({ status })} />
+            <button
+              onClick={onDelete}
+              className="text-gray-600 hover:text-red-400 transition-colors"
+              title="Remove application"
+              aria-label="Remove application"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-        <div className="flex-none flex items-center gap-2">
-          <AppStatusBadge status={app.status} />
-          {/* Status change */}
-          <select
-            value={app.status}
-            onChange={(e) => onPatch({ status: e.target.value })}
-            className="text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-300 focus:outline-none focus:border-gray-500"
+
+        {/* Salary + view link + applied date */}
+        <div className="flex items-center gap-3 mt-2 flex-wrap">
+          {app.job_salary_text && (
+            <span className="text-xs text-gray-500">{app.job_salary_text}</span>
+          )}
+          <a
+            href={app.job_url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
           >
-            {ALL_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {APP_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={onDelete}
-            className="text-gray-600 hover:text-red-400 text-lg leading-none transition-colors"
-            title="Remove application"
-          >
-            ×
-          </button>
-        </div>
-      </div>
-
-      {/* Score + salary + view link */}
-      <div className="flex items-center gap-3 mt-2">
-        {app.job_ai_match_score !== null && (
-          <span
-            className={`text-xs px-2 py-0.5 rounded font-medium ${scoreColor(app.job_ai_match_score)}`}
-          >
-            {app.job_ai_match_score}/100
-          </span>
-        )}
-        {app.job_salary_text && (
-          <span className="text-xs text-gray-500">{app.job_salary_text}</span>
-        )}
-        <a
-          href={app.job_url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-        >
-          View listing →
-        </a>
-        {app.applied_at && (
-          <span className="text-xs text-gray-600">
-            Applied {formatDate(app.applied_at)}
-          </span>
-        )}
-        {isSaving && (
-          <span className="text-xs text-gray-500 italic">Saving…</span>
-        )}
-      </div>
-
-      {/* Notes + dates */}
-      <div className="mt-3 space-y-3">
-        <div>
-          <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
-            Notes
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={() => {
-              if (notes !== (app.notes ?? "")) onPatch({ notes });
-            }}
-            placeholder="Add notes about this application…"
-            rows={2}
-            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 resize-none focus:outline-none focus:border-gray-500 transition-colors"
-          />
-        </div>
-        <div className="flex flex-wrap gap-4">
-          <div>
-            <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
-              Interview Date
-            </label>
-            <input
-              type="date"
-              value={interviewDate}
-              onChange={(e) => {
-                setInterviewDate(e.target.value);
-                if (e.target.value) {
-                  onPatch({ interview_date: `${e.target.value}T00:00:00` });
-                }
-              }}
-              className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200 focus:outline-none focus:border-gray-500 transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
-              Follow-up Date
-            </label>
-            <input
-              type="date"
-              value={followUpDate}
-              onChange={(e) => {
-                setFollowUpDate(e.target.value);
-                if (e.target.value) {
-                  onPatch({ follow_up_date: `${e.target.value}T00:00:00` });
-                }
-              }}
-              className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200 focus:outline-none focus:border-gray-500 transition-colors"
-            />
-          </div>
+            View listing →
+          </a>
+          {app.applied_at && (
+            <span className="text-xs text-gray-600">
+              Applied {formatDate(app.applied_at)}
+            </span>
+          )}
+          {isSaving && (
+            <span className="text-xs text-gray-500 italic">Saving…</span>
+          )}
         </div>
 
-        <div className="flex flex-wrap gap-4">
-          <div className="flex-1 min-w-[180px]">
-            <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
-              Resume Version
-            </label>
-            <input
-              type="text"
-              value={resumeVersion}
-              onChange={(e) => setResumeVersion(e.target.value)}
-              onBlur={() => {
-                if (resumeVersion !== (app.resume_version ?? "")) {
-                  onPatch({ resume_version: resumeVersion });
-                }
-              }}
-              placeholder="e.g. resume_v2_warehouse.pdf"
-              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500 transition-colors"
-            />
+        {/* Notes preview — stays visible even collapsed so nothing important hides silently */}
+        {!showDetails && app.notes && (
+          <p className="text-xs text-gray-500 mt-2 line-clamp-1 italic">"{app.notes}"</p>
+        )}
+
+        {/* Notes + dates — progressive disclosure */}
+        {showDetails && (
+          <div className="mt-3 space-y-3 pt-3 border-t border-gray-800">
+            <div>
+              <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
+                Notes
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                onBlur={() => {
+                  if (notes !== (app.notes ?? "")) onPatch({ notes });
+                }}
+                placeholder="Add notes about this application…"
+                rows={2}
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 resize-none focus:outline-none focus:border-gray-500 transition-colors"
+              />
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
+                  Interview Date
+                </label>
+                <input
+                  type="date"
+                  value={interviewDate}
+                  onChange={(e) => {
+                    setInterviewDate(e.target.value);
+                    if (e.target.value) {
+                      onPatch({ interview_date: `${e.target.value}T00:00:00` });
+                    }
+                  }}
+                  className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200 focus:outline-none focus:border-gray-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
+                  Follow-up Date
+                </label>
+                <input
+                  type="date"
+                  value={followUpDate}
+                  onChange={(e) => {
+                    setFollowUpDate(e.target.value);
+                    if (e.target.value) {
+                      onPatch({ follow_up_date: `${e.target.value}T00:00:00` });
+                    }
+                  }}
+                  className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-200 focus:outline-none focus:border-gray-500 transition-colors"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-4">
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
+                  Resume Version
+                </label>
+                <input
+                  type="text"
+                  value={resumeVersion}
+                  onChange={(e) => setResumeVersion(e.target.value)}
+                  onBlur={() => {
+                    if (resumeVersion !== (app.resume_version ?? "")) {
+                      onPatch({ resume_version: resumeVersion });
+                    }
+                  }}
+                  placeholder="e.g. resume_v2_warehouse.pdf"
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500 transition-colors"
+                />
+              </div>
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
+                  Cover Letter Version
+                </label>
+                <input
+                  type="text"
+                  value={coverLetterVersion}
+                  onChange={(e) => setCoverLetterVersion(e.target.value)}
+                  onBlur={() => {
+                    if (coverLetterVersion !== (app.cover_letter_version ?? "")) {
+                      onPatch({ cover_letter_version: coverLetterVersion });
+                    }
+                  }}
+                  placeholder="e.g. cl_seek_fruitpicker.docx"
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500 transition-colors"
+                />
+              </div>
+            </div>
           </div>
-          <div className="flex-1 min-w-[180px]">
-            <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
-              Cover Letter Version
-            </label>
-            <input
-              type="text"
-              value={coverLetterVersion}
-              onChange={(e) => setCoverLetterVersion(e.target.value)}
-              onBlur={() => {
-                if (coverLetterVersion !== (app.cover_letter_version ?? "")) {
-                  onPatch({ cover_letter_version: coverLetterVersion });
-                }
-              }}
-              placeholder="e.g. cl_seek_fruitpicker.docx"
-              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500 transition-colors"
-            />
+        )}
+
+        <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
+          <p className="text-xs text-gray-600">Updated {formatDate(app.updated_at)}</p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowDetails((v) => !v)}
+              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              {showDetails ? "Hide details" : hasDetails ? "Show details" : "Add details"}
+              {showDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTimeline((v) => !v)}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              {showTimeline ? "Hide history" : "Show history"}
+            </button>
           </div>
         </div>
-      </div>
 
-      <div className="flex items-center justify-between mt-3">
-        <p className="text-xs text-gray-600">Updated {formatDate(app.updated_at)}</p>
-        <button
-          type="button"
-          onClick={() => setShowTimeline((v) => !v)}
-          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-        >
-          {showTimeline ? "Hide history" : "Show history"}
-        </button>
+        {showTimeline && <Timeline applicationId={app.id} />}
       </div>
-
-      {showTimeline && <Timeline applicationId={app.id} />}
     </div>
   );
 }
+
+// ── Status filter tabs ─────────────────────────────────────────────────────────
+
+type FilterStatus = ApplicationStatus | "all";
+
+const TABS: { value: FilterStatus; label: string }[] = [
+  { value: "all", label: "All" },
+  ...ALL_STATUSES.map((s) => ({ value: s as FilterStatus, label: APP_STATUS_LABELS[s] })),
+];
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
@@ -313,7 +380,10 @@ export default function ApplicationsPage() {
       id: number;
       body: Parameters<typeof api.patchApplication>[1];
     }) => api.patchApplication(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["applications"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["applications"] });
+      qc.invalidateQueries({ queryKey: ["applicationsPipeline"] });
+    },
     onError: (err) => push(`Couldn't save changes: ${errorMessage(err)}`, "error"),
   });
 
@@ -321,6 +391,7 @@ export default function ApplicationsPage() {
     mutationFn: (id: number) => api.deleteApplication(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["applications"] });
+      qc.invalidateQueries({ queryKey: ["applicationsPipeline"] });
       push("Application removed", "success");
     },
     onError: (err) => push(`Couldn't remove application: ${errorMessage(err)}`, "error"),
@@ -336,6 +407,8 @@ export default function ApplicationsPage() {
           {activeStatus !== "all" ? ` · ${APP_STATUS_LABELS[activeStatus as ApplicationStatus]}` : ""}
         </p>
       </div>
+
+      <PipelineSummary />
 
       {/* Search */}
       <input
@@ -354,7 +427,7 @@ export default function ApplicationsPage() {
             onClick={() => setActiveStatus(tab.value)}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeStatus === tab.value
-                ? "bg-gray-700 text-white"
+                ? "bg-blue-600 text-white"
                 : "bg-gray-900 text-gray-400 border border-gray-800 hover:text-gray-200 hover:border-gray-700"
             }`}
           >
