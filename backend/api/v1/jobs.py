@@ -13,6 +13,7 @@ from backend.core.application_readiness import (
     ApplicationReadiness,
     evaluate_application_readiness,
 )
+from backend.core.job_intelligence import evaluate_job_intelligence, find_similar_jobs
 from backend.database.models import (
     Application,
     ApplicationKitResponse,
@@ -27,9 +28,12 @@ from backend.database.models import (
     CompleteSessionResponse,
     Job,
     JobChange,
+    JobIntelligenceResponse,
+    JobIntelligenceSummaryItem,
     LaunchApplicationResponse,
     Resume,
     SectionReadinessOut,
+    SimilarJobResponse,
 )
 from backend.database.queries import get_active_session, log_application_event
 from backend.database.session import get_session
@@ -146,6 +150,87 @@ async def get_job_application_readiness(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return _readiness_to_response(_evaluate_job_readiness(session, job))
+
+
+# ── Job Intelligence (Phase 9) ────────────────────────────────────────────────
+# backend/core/job_intelligence.py is the single evaluator — every endpoint
+# below is a thin wrapper; never re-implement scoring or recommendation rules.
+
+def _job_intelligence_response(job: Job, session: Session) -> JobIntelligenceResponse:
+    had_summary = bool(job.summary_json)
+    summary = load_job_summary(job)
+    if not had_summary:
+        session.add(job)  # load_job_summary generated one on the fly — persist it
+    intelligence = evaluate_job_intelligence(job, summary)
+    return JobIntelligenceResponse(
+        score=intelligence.score,
+        confidence=intelligence.confidence,
+        recommendation=intelligence.recommendation.value,
+        reasons=intelligence.reasons,
+        missing_requirements=intelligence.missing_requirements,
+    )
+
+
+@router.get("/job-intelligence-summary")
+async def get_job_intelligence_summary(
+    session: Session = Depends(get_session),
+) -> dict[str, JobIntelligenceSummaryItem]:
+    """Bulk Job Intelligence score/recommendation for every active job, in
+    one query round trip — powers the Dashboard's Priority Queue sort and
+    the High Match / Ready / Visa Compatible filters."""
+    jobs = session.exec(select(Job).where(Job.is_active == True)).all()  # noqa: E712
+    result: dict[str, JobIntelligenceSummaryItem] = {}
+    dirty = False
+    for job in jobs:
+        had_summary = bool(job.summary_json)
+        summary = load_job_summary(job)
+        if not had_summary:
+            session.add(job)
+            dirty = True
+        intelligence = evaluate_job_intelligence(job, summary)
+        result[str(job.id)] = JobIntelligenceSummaryItem(
+            score=intelligence.score, recommendation=intelligence.recommendation.value
+        )
+    if dirty:
+        session.commit()
+    return result
+
+
+@router.get("/{job_id}/job-intelligence", response_model=JobIntelligenceResponse)
+async def get_job_intelligence(
+    job_id: int, session: Session = Depends(get_session)
+) -> JobIntelligenceResponse:
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    response = _job_intelligence_response(job, session)
+    session.commit()
+    return response
+
+
+@router.get("/{job_id}/similar", response_model=list[SimilarJobResponse])
+async def get_similar_jobs(job_id: int, session: Session = Depends(get_session)) -> list[SimilarJobResponse]:
+    """Deterministic similarity by Title, Industry (role_priority — the
+    closest proxy Kiwi has), and Location. See find_similar_jobs()."""
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    candidates = session.exec(
+        select(Job).where(Job.is_active == True, Job.id != job_id)  # noqa: E712
+    ).all()
+    similar = find_similar_jobs(job, candidates)
+    return [
+        SimilarJobResponse(
+            id=s.job.id,
+            title=s.job.title,
+            employer=s.job.employer,
+            location=s.job.location,
+            source=s.job.source,
+            ai_match_score=s.job.ai_match_score,
+            similarity_score=s.similarity_score,
+        )
+        for s in similar
+    ]
 
 
 @router.get("/{job_id}")
@@ -579,6 +664,10 @@ async def generate_job_prompt(
         "job_description": job_description_text,
         "job_location": job.location,
         "employment_type": "Not specified",
+        # Job Intelligence (Phase 9) — grounds the "Why am I a good fit?"
+        # prompt in Kiwi's own deterministic reasons rather than letting the
+        # AI guess; unused by every other template.
+        "match_reasons": "\n".join(f"- {r}" for r in evaluate_job_intelligence(job, summary).reasons),
     }
 
     content = render_template(action.template_file, variables)

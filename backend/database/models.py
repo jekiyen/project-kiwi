@@ -456,3 +456,30 @@ class CompleteSessionRequest(SQLModel):
 class CompleteSessionResponse(SQLModel):
     application: Application
     session: ApplicationSessionResponse
+
+
+# ── Job Intelligence (Phase 9) ───────────────────────────────────────────────
+# Response shapes for backend/core/job_intelligence.py — the single
+# deterministic scoring/recommendation/gap-analysis service.
+
+class JobIntelligenceResponse(SQLModel):
+    score: int
+    confidence: int
+    recommendation: str
+    reasons: list[str]
+    missing_requirements: list[str]
+
+
+class JobIntelligenceSummaryItem(SQLModel):
+    score: int
+    recommendation: str
+
+
+class SimilarJobResponse(SQLModel):
+    id: int
+    title: str
+    employer: str
+    location: str
+    source: str
+    ai_match_score: Optional[float]
+    similarity_score: int

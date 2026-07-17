@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, type ApplicationEvent, type Job, type JobChange, type JobSummary } from "../api/client";
 import AIWorkspace from "../components/AIWorkspace";
 import ApplicationKit from "../components/ApplicationKit";
+import JobIntelligenceCard from "../components/JobIntelligenceCard";
 import { useToast } from "../hooks/useToast";
 import { ErrorBanner, errorMessage, formatDate, formatRelativeTime, scoreColor, sourceLabel } from "../shared";
 
@@ -203,6 +204,8 @@ function OverviewTab({
           )}
         </div>
       )}
+
+      <JobIntelligenceCard job={job} />
 
       <ViewListingLink job={job} />
     </div>

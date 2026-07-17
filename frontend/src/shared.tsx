@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import type { ApplicationReadinessStatus, ApplicationStatus } from "./api/client";
+import type { ApplicationReadinessStatus, ApplicationStatus, RecommendationLevel } from "./api/client";
 
 // Backend serializes naive UTC datetimes with no timezone designator
 // (e.g. "2026-07-10T06:33:02"). JS Date parses that as local time, so
@@ -155,6 +155,34 @@ export function WorkflowBadge({ state }: { state: WorkflowState }) {
     );
   }
   return <AppStatusBadge status={state} />;
+}
+
+// ── Job Intelligence (Phase 9) ──────────────────────────────────────────────
+// Recommendation levels come from a single deterministic evaluator
+// (backend/core/job_intelligence.py) — this is presentation only.
+
+export const RECOMMENDATION_CONFIG: Record<RecommendationLevel, { label: string; cls: string }> = {
+  highly_recommended: { label: "Highly Recommended", cls: "bg-emerald-900/50 text-emerald-300" },
+  recommended: { label: "Recommended", cls: "bg-blue-900/50 text-blue-300" },
+  consider: { label: "Consider", cls: "bg-amber-900/50 text-amber-300" },
+  low_priority: { label: "Low Priority", cls: "bg-gray-800 text-gray-500" },
+};
+
+// Lower rank = higher priority — used to sort the Priority Queue.
+export const RECOMMENDATION_RANK: Record<RecommendationLevel, number> = {
+  highly_recommended: 0,
+  recommended: 1,
+  consider: 2,
+  low_priority: 3,
+};
+
+export function RecommendationBadge({ level }: { level: RecommendationLevel }) {
+  const cfg = RECOMMENDATION_CONFIG[level];
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  );
 }
 
 export function SkeletonStatCard() {

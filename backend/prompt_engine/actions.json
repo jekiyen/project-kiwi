@@ -1,5 +1,12 @@
 [
   {
+    "id": "good_fit",
+    "label": "Why am I a good fit?",
+    "description": "Get a clear, honest case for why you'd suit this role — and any gaps to be upfront about.",
+    "template_file": "good_fit.md",
+    "icon": "🎯"
+  },
+  {
     "id": "resume_analysis",
     "label": "Resume Analysis",
     "description": "See how well your resume fits this specific job.",

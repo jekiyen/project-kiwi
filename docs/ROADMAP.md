@@ -248,25 +248,41 @@ Transforms Kiwi from a Job Tracker into an Application Copilot: it reduces the e
 - Fixed a related correctness gap while wiring this up: `DELETE /applications/{id}` previously left orphaned `ApplicationSession` rows behind; it now cascades to delete those too.
 - 37 new backend tests (Readiness Engine unit tests for every rule, Application Kit / readiness-summary / launch / complete-session endpoints incl. all three outcomes, cover-letter stamping, the cascade-delete fix) — full suite: 412 passed. Frontend: clean `tsc` + `vite build`. Verified live against the running dev backend end-to-end (launch → resume → application-kit → complete with each outcome → readiness-summary reflects the change), then reverted the test application/session so no fake activity was left on a real job.
 
-### Phase 9 — Interview Copilot
+### Phase 9 — Job Intelligence
+**Status:** Complete
+
+Not to be confused with Phase 7.6 (also "Job Intelligence" — that phase extracts structure *out of one job's description*; this phase decides *which jobs are worth applying to*). Helps the user decide WHAT to apply for next: prioritizes jobs, explains why, and surfaces missing requirements — all deterministic, all reusing data Kiwi already has. Never calls an AI provider, never hallucinates a score or a missing item.
+
+- **Job Intelligence service** (`backend/core/job_intelligence.py`) — the single evaluator, used everywhere. It's an interpretation layer, not a second scorer: when a job has already been analysed, it reads `Job.ai_match_score` / `ai_confidence` / `ai_reasons` (ManualProvider's existing deterministic keyword analysis, Phase 3) as-is; for a job that hasn't been analysed yet, it falls back to `backend/core/matcher.py`'s structured-fields-only score (role priority + visa flags) rather than inventing a new formula. Produces **Score**, **Confidence**, and a plain-language **Reason list**.
+- **Recommendation Badge** — score bucketed into Highly Recommended (≥80) / Recommended (≥60) / Consider (≥35) / Low Priority (below), via one threshold function (`recommendation_for_score`).
+- **Missing Requirements** — what the listing itself didn't specify (Requirements, Salary, Employment Type, Job Description, Visa/Work Rights Policy), each literally `"<field>: Not specified"` when absent — never a guess, and never a comparison against the applicant's own qualifications (which would risk inventing a match).
+- **Priority Queue** — a new "Priority Queue (recommendation)" Dashboard sort option, backed by the bulk `GET /jobs/job-intelligence-summary` (one query for every active job, computed once).
+- **Similar Jobs** (`GET /jobs/{id}/similar`) — deterministic similarity by Title (token overlap), Industry (role priority — the closest proxy Kiwi has, since no job source provides a real industry field), and Location; Employment Type is intentionally skipped since no job source provides it.
+- **Why This Job** — the Reason list rendered as its own card on the Job Detail Overview tab, next to the new Score/Confidence/Recommendation card and the Missing Requirements and Similar Jobs cards.
+- **Jobs Filters** — Ready / High Match / Visa Compatible / Applied filter chips on the Dashboard, combining the Phase 8 Readiness Engine, this phase's recommendation summary, and existing visa flags / application status — no new rules, just composition.
+- **AI Workspace** — a new "Why am I a good fit?" prompt action (`good_fit.md` + one `actions.json` entry — zero code changes needed thanks to the Phase 7.4 config-driven registry), grounded in this phase's deterministic reasons via a new `match_reasons` template variable. Still only ever renders a prompt for the user to paste into Claude by hand — never calls an AI API.
+- Fixed while wiring this up: nothing — no regressions found needing a fix this phase.
+- 33 new backend tests (recommendation thresholds, scoring incl. the analysed/fallback paths, reasons incl. malformed-JSON resilience, missing-requirements gap detection, similarity matching/exclusion/limit, all three new endpoints, the new Prompt Engine action) — full suite: 445 passed. Frontend: clean `tsc` + `vite build`. Verified live against the running dev backend across real data (1,435 active jobs): job-intelligence, the bulk summary, similar-jobs, and the good_fit prompt (incl. its Prompt Guard disclaimer) all returned correct, consistent results.
+
+### Phase 10 — Interview Copilot
 - Interview preparation workspace once an application reaches the Interview stage
 - Likely-questions and talking-points generation via the existing Prompt Engine (no new AI integration)
 - Interview scheduling/reminders surfaced through existing notifications
 - Post-interview follow-up tracking integrated into the existing Activity timeline
 
-### Phase 10 — Visa Advisor
+### Phase 11 — Visa Advisor
 - Accredited Employer Work Visa pathway guide
 - Working Holiday Visa eligibility checker
 - Document checklist per visa type
 - Timeline estimator for visa processing
 
-### Phase 11 — Cloud Deployment
+### Phase 12 — Cloud Deployment
 - Dockerize all services
 - Deploy to VPS with persistent storage
 - Remote dashboard access (secured)
 - Cloud-scheduled scanning (no local machine required)
 
-### Phase 12 — Settlement Assistant
+### Phase 13 — Settlement Assistant
 - Housing research by NZ region
 - Cost of living calculator
 - Community guides for regions with high seasonal work

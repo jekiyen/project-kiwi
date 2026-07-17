@@ -7,12 +7,20 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Link, NavLink, Route, Routes } from "react-router-dom";
-import { api, type ApplicationReadinessStatus, type ApplicationWithJob, type Job } from "./api/client";
+import {
+  api,
+  type ApplicationReadinessStatus,
+  type ApplicationWithJob,
+  type Job,
+  type JobIntelligenceSummaryItem,
+} from "./api/client";
 import ScanHistoryPage from "./pages/ScanHistoryPage";
 import JobDetailPage from "./pages/JobDetailPage";
 import {
   ErrorBanner,
   ErrorBoundary,
+  RECOMMENDATION_RANK,
+  RecommendationBadge,
   SkeletonJobCard,
   SkeletonStatCard,
   WorkflowBadge,
@@ -59,9 +67,10 @@ const queryClient = new QueryClient({
   },
 });
 
-type JobSort = "score_desc" | "score_asc" | "newest" | "oldest" | "employer";
+type JobSort = "recommendation" | "score_desc" | "score_asc" | "newest" | "oldest" | "employer";
 
 const SORT_OPTIONS: { value: JobSort; label: string }[] = [
+  { value: "recommendation", label: "Priority Queue (recommendation)" },
   { value: "score_desc", label: "Match score (high → low)" },
   { value: "score_asc", label: "Match score (low → high)" },
   { value: "newest", label: "Newest first" },
@@ -69,9 +78,22 @@ const SORT_OPTIONS: { value: JobSort; label: string }[] = [
   { value: "employer", label: "Employer (A → Z)" },
 ];
 
-function sortJobs(jobs: Job[], sort: JobSort): Job[] {
+function sortJobs(
+  jobs: Job[],
+  sort: JobSort,
+  intelligence: Record<string, JobIntelligenceSummaryItem>,
+): Job[] {
   const copy = [...jobs];
   switch (sort) {
+    case "recommendation":
+      return copy.sort((a, b) => {
+        const ia = intelligence[a.id];
+        const ib = intelligence[b.id];
+        const rankA = ia ? RECOMMENDATION_RANK[ia.recommendation] : RECOMMENDATION_RANK.low_priority;
+        const rankB = ib ? RECOMMENDATION_RANK[ib.recommendation] : RECOMMENDATION_RANK.low_priority;
+        if (rankA !== rankB) return rankA - rankB;
+        return (ib?.score ?? -1) - (ia?.score ?? -1);
+      });
     case "score_desc":
       return copy.sort((a, b) => (b.ai_match_score ?? -1) - (a.ai_match_score ?? -1));
     case "score_asc":
@@ -205,9 +227,10 @@ interface JobCardProps {
   job: Job;
   application?: ApplicationWithJob;
   readinessStatus?: ApplicationReadinessStatus;
+  intelligence?: JobIntelligenceSummaryItem;
 }
 
-function JobCard({ job, application, readinessStatus }: JobCardProps) {
+function JobCard({ job, application, readinessStatus, intelligence }: JobCardProps) {
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
 
@@ -271,6 +294,7 @@ function JobCard({ job, application, readinessStatus }: JobCardProps) {
 
           <div className="flex-none flex items-center flex-wrap justify-end gap-1.5 max-w-[45%]">
             <WorkflowBadge state={workflowState} />
+            {intelligence && <RecommendationBadge level={intelligence.recommendation} />}
             {job.ai_priority && job.ai_priority !== "Reject" && (
               <span
                 className={`text-xs px-2 py-0.5 rounded font-medium ${priorityColor(job.ai_priority)}`}
@@ -486,10 +510,23 @@ function JobsEmptyState({ onScan, scanning }: { onScan: () => void; scanning: bo
   );
 }
 
+type JobFilter = "all" | "ready" | "high_match" | "visa_compatible" | "applied";
+
+const FILTER_OPTIONS: { value: JobFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "ready", label: "Ready" },
+  { value: "high_match", label: "High Match" },
+  { value: "visa_compatible", label: "Visa Compatible" },
+  { value: "applied", label: "Applied" },
+];
+
+const HIGH_MATCH_RECOMMENDATIONS = new Set(["highly_recommended", "recommended"]);
+
 function Dashboard() {
   const qc = useQueryClient();
   const { push } = useToast();
   const [sort, setSort] = useState<JobSort>("score_desc");
+  const [filter, setFilter] = useState<JobFilter>("all");
 
   const {
     data: jobs = [],
@@ -519,6 +556,11 @@ function Dashboard() {
     queryFn: api.readinessSummary,
   });
 
+  const { data: intelligenceSummary = {} } = useQuery({
+    queryKey: ["jobIntelligenceSummary"],
+    queryFn: api.jobIntelligenceSummary,
+  });
+
   const appsByJobId = useMemo(() => {
     const map = new Map<number, ApplicationWithJob>();
     for (const app of apps) map.set(app.job_id, app);
@@ -533,7 +575,36 @@ function Dashboard() {
     return c;
   }, [apps]);
 
-  const sortedJobs = useMemo(() => sortJobs(jobs, sort), [jobs, sort]);
+  const visaCompatible = (job: Job) =>
+    (job.visa_accredited_employer || job.visa_overseas_friendly || job.visa_sponsorship_potential) &&
+    !job.visa_nz_rights_required;
+
+  const filteredJobs = useMemo(() => {
+    switch (filter) {
+      case "ready":
+        return jobs.filter((j) => readinessSummary[j.id] === "ready");
+      case "high_match":
+        return jobs.filter((j) => {
+          const rec = intelligenceSummary[j.id]?.recommendation;
+          return rec ? HIGH_MATCH_RECOMMENDATIONS.has(rec) : false;
+        });
+      case "visa_compatible":
+        return jobs.filter(visaCompatible);
+      case "applied":
+        return jobs.filter((j) => {
+          const app = appsByJobId.get(j.id);
+          return !!app && app.status !== "saved";
+        });
+      default:
+        return jobs;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs, filter, readinessSummary, intelligenceSummary, appsByJobId]);
+
+  const sortedJobs = useMemo(
+    () => sortJobs(filteredJobs, sort, intelligenceSummary),
+    [filteredJobs, sort, intelligenceSummary],
+  );
 
   const scanMutation = useMutation({
     mutationFn: api.triggerScan,
@@ -664,7 +735,7 @@ function Dashboard() {
           <h2 className="text-base font-semibold text-white">
             Jobs
             {!jobsLoading && jobs.length > 0 && (
-              <span className="text-gray-500 font-normal text-sm ml-2">({jobs.length})</span>
+              <span className="text-gray-500 font-normal text-sm ml-2">({sortedJobs.length})</span>
             )}
           </h2>
           {!jobsLoading && jobs.length > 0 && (
@@ -681,6 +752,24 @@ function Dashboard() {
             </select>
           )}
         </div>
+
+        {!jobsLoading && jobs.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap mb-4">
+            {FILTER_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setFilter(opt.value)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  filter === opt.value
+                    ? "bg-gray-700 text-white"
+                    : "bg-gray-900 text-gray-400 border border-gray-800 hover:text-gray-200 hover:border-gray-700"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {jobsLoading ? (
           <div className="flex flex-col gap-3">
@@ -699,6 +788,10 @@ function Dashboard() {
             onScan={() => scanMutation.mutate()}
             scanning={scanMutation.isPending}
           />
+        ) : sortedJobs.length === 0 ? (
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
+            <p className="text-gray-500 text-sm">No jobs match this filter.</p>
+          </div>
         ) : (
           <div className="flex flex-col gap-3">
             {sortedJobs.map((job) => (
@@ -707,6 +800,7 @@ function Dashboard() {
                 job={job}
                 application={appsByJobId.get(job.id)}
                 readinessStatus={readinessSummary[job.id]}
+                intelligence={intelligenceSummary[job.id]}
               />
             ))}
           </div>

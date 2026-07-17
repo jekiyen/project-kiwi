@@ -383,6 +383,37 @@ export interface CompleteSessionResponse {
   session: ApplicationSession;
 }
 
+// ── Job Intelligence (Phase 9) ───────────────────────────────────────────────
+// Deterministic scoring, recommendation, and gap-analysis — backend/core/
+// job_intelligence.py is the single evaluator. It never calls an AI
+// provider; Job.ai_match_score/ai_reasons already come from ManualProvider's
+// own deterministic keyword analysis, and this just interprets them.
+
+export type RecommendationLevel = "highly_recommended" | "recommended" | "consider" | "low_priority";
+
+export interface JobIntelligence {
+  score: number;
+  confidence: number;
+  recommendation: RecommendationLevel;
+  reasons: string[];
+  missing_requirements: string[];
+}
+
+export interface JobIntelligenceSummaryItem {
+  score: number;
+  recommendation: RecommendationLevel;
+}
+
+export interface SimilarJob {
+  id: number;
+  title: string;
+  employer: string;
+  location: string;
+  source: string;
+  ai_match_score: number | null;
+  similarity_score: number;
+}
+
 // ── API object ────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -506,4 +537,10 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ outcome }),
     }),
+
+  // Job Intelligence (Phase 9)
+  jobIntelligence: (jobId: number) => request<JobIntelligence>(`/jobs/${jobId}/job-intelligence`),
+  jobIntelligenceSummary: () =>
+    request<Record<string, JobIntelligenceSummaryItem>>("/jobs/job-intelligence-summary"),
+  similarJobs: (jobId: number) => request<SimilarJob[]>(`/jobs/${jobId}/similar`),
 };
