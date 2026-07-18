@@ -5,3 +5,4 @@ export { Badge } from "./Badge";
 export { Button } from "./Button";
 export { ScoreGauge, ProgressBar } from "./ScoreGauge";
 export { Surface, SectionLabel } from "./Surface";
+export { Pagination, getPaginationRange } from "./Pagination";

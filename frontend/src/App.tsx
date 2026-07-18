@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   QueryClient,
   QueryClientProvider,
@@ -44,6 +44,7 @@ import {
   sourceLabel,
 } from "./shared";
 import { Badge } from "./design/Badge";
+import { Pagination } from "./design/Pagination";
 import { ScoreGauge } from "./design/ScoreGauge";
 import { Surface, SectionLabel } from "./design/Surface";
 import { buttonClasses } from "./design/tokens";
@@ -445,11 +446,15 @@ const FILTER_OPTIONS: { value: JobFilter; label: string }[] = [
 
 const HIGH_MATCH_RECOMMENDATIONS = new Set(["highly_recommended", "recommended"]);
 
+const JOBS_PAGE_SIZE = 10;
+
 function Dashboard() {
   const qc = useQueryClient();
   const { push } = useToast();
   const [sort, setSort] = useState<JobSort>("score_desc");
   const [filter, setFilter] = useState<JobFilter>("all");
+  const [page, setPage] = useState(1);
+  const jobsHeadingRef = useRef<HTMLHeadingElement>(null);
 
   const {
     data: jobs = [],
@@ -532,6 +537,32 @@ function Dashboard() {
     () => sortJobs(filteredJobs, sort, intelligenceSummary),
     [filteredJobs, sort, intelligenceSummary],
   );
+
+  const totalPages = Math.max(1, Math.ceil(sortedJobs.length / JOBS_PAGE_SIZE));
+
+  // Changing filter/search criteria always starts back at page 1. Sorting
+  // alone never changes how many results there are (only their order), so
+  // it never resets the page here — the clamp effect below only steps in
+  // if the current page genuinely stopped being valid (e.g. after a filter
+  // change shrinks the result set).
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
+  useEffect(() => {
+    setPage((p) => Math.min(p, totalPages));
+  }, [totalPages]);
+
+  const paginatedJobs = useMemo(
+    () => sortedJobs.slice((page - 1) * JOBS_PAGE_SIZE, page * JOBS_PAGE_SIZE),
+    [sortedJobs, page],
+  );
+
+  const goToPage = (nextPage: number) => {
+    setPage(nextPage);
+    // Scroll the Jobs list back into view, not the whole page.
+    jobsHeadingRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const scanMutation = useMutation({
     mutationFn: api.triggerScan,
@@ -660,7 +691,7 @@ function Dashboard() {
       {/* Jobs list */}
       <section className="mb-6">
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-          <h2 className="text-base font-semibold text-white">
+          <h2 ref={jobsHeadingRef} className="text-base font-semibold text-white scroll-mt-6">
             Jobs
             {!jobsLoading && jobs.length > 0 && (
               <span className="text-gray-500 font-normal text-sm ml-2">({sortedJobs.length})</span>
@@ -721,17 +752,26 @@ function Dashboard() {
             <p className="text-gray-500 text-sm">No jobs match this filter.</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {sortedJobs.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                application={appsByJobId.get(job.id)}
-                readinessStatus={readinessSummary[job.id]}
-                intelligence={intelligenceSummary[job.id]}
-              />
-            ))}
-          </div>
+          <>
+            <div className="flex flex-col gap-3">
+              {paginatedJobs.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  application={appsByJobId.get(job.id)}
+                  readinessStatus={readinessSummary[job.id]}
+                  intelligence={intelligenceSummary[job.id]}
+                />
+              ))}
+            </div>
+            <Pagination
+              page={page}
+              pageSize={JOBS_PAGE_SIZE}
+              totalItems={sortedJobs.length}
+              onPageChange={goToPage}
+              itemLabel="jobs"
+            />
+          </>
         )}
       </section>
 
